@@ -11,14 +11,17 @@ COPY edict/frontend/ ./
 # Build 输出到 /build/dist（vite.config 中 outDir 是相对路径，这里重写）
 RUN npx vite build --outDir /build/dist
 
-# Stage 2: 运行时
-FROM --platform=${TARGETPLATFORM:-linux/amd64} python:3.11-slim
+# Stage 2: 运行时 (多架构支持 amd64 + arm64)
+FROM python:3.11-slim
 
 WORKDIR /app
 
 # 复制看板核心文件
 COPY dashboard/ ./dashboard/
 COPY scripts/ ./scripts/
+
+# 复制通知渠道模块 (Fix #233: server.py 依赖 channels 包)
+COPY edict/backend/app/channels/ ./edict/backend/app/channels/
 
 # 复制 React 构建产物
 COPY --from=frontend-build /build/dist ./dashboard/dist/

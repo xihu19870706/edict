@@ -11,6 +11,7 @@
   - 命运骰子：随机事件
   - 每个官员保持自己的角色性格和说话风格
 """
+from __future__ import annotations
 
 import json
 import logging

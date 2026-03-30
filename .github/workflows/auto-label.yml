@@ -12,7 +12,7 @@ jobs:
   label:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/labeler@v5
+      - uses: actions/labeler@v6
         with:
           repo-token: "${{ secrets.GITHUB_TOKEN }}"
           sync-labels: false
@@ -20,7 +20,7 @@ jobs:
   size-label:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Label PR size
         uses: codelytv/pr-size-labeler@v1
         with:
