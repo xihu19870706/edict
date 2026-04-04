@@ -214,15 +214,35 @@ The installer automatically:
 ### Launch
 
 ```bash
-# Terminal 1: Data sync loop (every 15s)
-bash scripts/run_loop.sh
+# Option 1: One-click launch (recommended)
+chmod +x start.sh && ./start.sh
 
-# Terminal 2: Dashboard server
-python3 dashboard/server.py
+# Option 2: Manual launch
+bash scripts/run_loop.sh &      # Data sync loop
+python3 dashboard/server.py     # Dashboard server
 
 # Open browser
 open http://127.0.0.1:7891
 ```
+
+<details>
+<summary><b>🖥️ Production deployment (systemd)</b></summary>
+
+```bash
+# Install systemd service
+sudo cp edict.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable edict
+sudo systemctl start edict
+
+# Or use management script
+bash edict.sh start    # Start
+bash edict.sh status   # Check status
+bash edict.sh restart  # Restart
+bash edict.sh stop     # Stop
+```
+
+</details>
 
 > 📖 See [Getting Started Guide](docs/getting-started.md) for detailed walkthrough.
 
@@ -318,15 +338,40 @@ edict/
 ├── dashboard/
 │   ├── dashboard.html          # Dashboard (single file, zero deps, works out of the box)
 │   ├── dist/                   # Pre-built React frontend (included in Docker image)
+│   ├── auth.py                 # Dashboard login authentication
+│   ├── court_discuss.py        # Court discussion (multi-agent LLM debate engine)
 │   └── server.py               # API server (stdlib, zero deps)
+├── edict/backend/              # Async backend services (SQLAlchemy + Redis)
+│   ├── app/models/
+│   │   ├── task.py             # Task model + state machine
+│   │   ├── audit.py            # Audit log model
+│   │   └── outbox.py           # Outbox message model
+│   ├── app/services/
+│   │   ├── event_bus.py        # Redis Streams EventBus
+│   │   └── task_service.py     # Task service layer
+│   └── app/workers/
+│       ├── dispatch_worker.py  # Parallel dispatch + retry + resource lock
+│       ├── orchestrator_worker.py  # DAG orchestrator
+│       └── outbox_relay.py     # Transactional Outbox Relay
+├── agents/
+│   ├── <agent_id>/SOUL.md      # Agent personality templates
+│   ├── GLOBAL.md               # Global agent config
+│   └── groups/                 # Agent groups (sansheng / liubu)
 ├── scripts/                    # Data sync & automation scripts
-│   ├── kanban_update.py        #   Kanban CLI with data sanitization (~300 lines)
-│   └── ...                     #   fetch_morning_news, sync, screenshots, etc.
-├── tests/                      # E2E tests
-│   └── test_e2e_kanban.py      #   Kanban sanitization tests (17 assertions)
+│   ├── kanban_update.py        #   Kanban CLI with data sanitization + state machine
+│   ├── agentrec_advisor.py     #   Agent model recommendation (merit + cost optimization)
+│   ├── linucb_router.py        #   LinUCB smart routing
+│   ├── refresh_watcher.py      #   Data change watcher
+│   └── ...                     #   fetch_morning_news, sync, etc.
+├── tests/
+│   ├── test_e2e_kanban.py      #   Kanban sanitization tests (17 assertions)
+│   └── test_state_machine_consistency.py  # State machine consistency tests
 ├── data/                       # Runtime data (gitignored)
 ├── docs/                       # Documentation + screenshots
 ├── install.sh                  # One-click installer
+├── start.sh                    # One-click launch (Dashboard + data sync)
+├── edict.service               # systemd service config (production deploy)
+├── edict.sh                    # Service management (start/stop/restart/status)
 └── LICENSE                     # MIT
 ```
 
@@ -338,9 +383,16 @@ edict/
 |---|---|
 | **React 18 Frontend** | TypeScript + Vite + Zustand, 13 components |
 | **stdlib Backend** | `server.py` on `http.server`, zero dependencies |
+| **EventBus** | Redis Streams pub/sub for decoupled service communication |
+| **Outbox Relay** | Transactional outbox pattern for reliable event delivery (at-least-once) |
+| **State Machine Audit** | Strict lifecycle transitions + full audit logging (`audit.py`) |
+| **Parallel Dispatch** | Dispatch Worker with parallel execution, exponential backoff retry, resource locking |
+| **DAG Orchestrator** | Task decomposition and dependency resolution via DAG |
 | **Agent Thinking Visible** | Real-time display of agent thinking, tool calls, results |
-| **One-click Install** | Workspace creation to Gateway restart |
+| **One-click Install / Launch** | `install.sh` auto-configures, `start.sh` launches all services |
+| **systemd Production Deploy** | `edict.service` for daemon process, auto-restart on boot |
 | **15s Auto-sync** | Live data refresh with countdown |
+| **Dashboard Auth** | `auth.py` provides login authentication |
 | **Daily Ceremony** | Immersive opening animation |
 
 ---
@@ -367,7 +419,14 @@ edict/
 
 ### Phase 2 — Institutional Depth 🚧
 - [ ] Imperial approval mode (human-in-the-loop)
-- [ ] Merit/demerit ledger (agent scoring)
+- [x] Merit/demerit ledger (agent scoring + model recommendation + cost optimization)
+- [x] EventBus (Redis Streams decoupled communication)
+- [x] Outbox Relay (transactional event delivery)
+- [x] State machine audit (strict lifecycle + audit logging)
+- [x] Parallel dispatch engine (exponential backoff retry + resource lock)
+- [x] DAG orchestrator (task decomposition + dependency resolution)
+- [x] Dashboard authentication (login auth)
+- [x] One-click launch / systemd production deploy
 - [ ] Express courier (inter-agent message visualization)
 - [ ] Imperial Archives (knowledge base + citation)
 

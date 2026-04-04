@@ -214,15 +214,35 @@ chmod +x install.sh && ./install.sh
 ### 起動
 
 ```bash
-# ターミナル1：データ同期ループ（15秒間隔）
-bash scripts/run_loop.sh
+# 方法1：ワンクリック起動（推奨）
+chmod +x start.sh && ./start.sh
 
-# ターミナル2：ダッシュボードサーバー
-python3 dashboard/server.py
+# 方法2：手動起動
+bash scripts/run_loop.sh &      # データ同期ループ
+python3 dashboard/server.py     # ダッシュボードサーバー
 
 # ブラウザを開く
 open http://127.0.0.1:7891
 ```
+
+<details>
+<summary><b>🖥️ 本番環境デプロイ（systemd）</b></summary>
+
+```bash
+# systemdサービスのインストール
+sudo cp edict.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable edict
+sudo systemctl start edict
+
+# または管理スクリプトを使用
+bash edict.sh start    # 起動
+bash edict.sh status   # ステータス確認
+bash edict.sh restart  # 再起動
+bash edict.sh stop     # 停止
+```
+
+</details>
 
 > 📖 詳細なウォークスルーは[スタートガイド](docs/getting-started.md)をご覧ください。
 
@@ -318,15 +338,39 @@ edict/
 ├── dashboard/
 │   ├── dashboard.html          # ダッシュボード（単一ファイル、依存関係ゼロ、すぐに使える）
 │   ├── dist/                   # ビルド済みReactフロントエンド（Dockerイメージに含む）
+│   ├── auth.py                 # ダッシュボードログイン認証
+│   ├── court_discuss.py        # 朝堂議政（マルチエージェントLLM討論エンジン）
 │   └── server.py               # APIサーバー（stdlib、依存関係ゼロ）
+├── edict/backend/              # 非同期バックエンドサービス（SQLAlchemy + Redis）
+│   ├── app/models/
+│   │   ├── task.py             # タスクモデル + ステートマシン
+│   │   ├── audit.py            # 監査ログモデル
+│   │   └── outbox.py           # Outboxメッセージモデル
+│   ├── app/services/
+│   │   ├── event_bus.py        # Redis Streams EventBus
+│   │   └── task_service.py     # タスクサービス層
+│   └── app/workers/
+│       ├── dispatch_worker.py  # 並列ディスパッチ + リトライ + リソースロック
+│       ├── orchestrator_worker.py  # DAGオーケストレータ
+│       └── outbox_relay.py     # トランザクショナルOutbox Relay
+├── agents/
+│   ├── <agent_id>/SOUL.md      # エージェントパーソナリティテンプレート
+│   ├── GLOBAL.md               # グローバルエージェント設定
+│   └── groups/                 # エージェントグループ（sansheng / liubu）
 ├── scripts/                    # データ同期＆自動化スクリプト
-│   ├── kanban_update.py        #   かんばんCLI（データサニタイズ付き、約300行）
-│   └── ...                     #   fetch_morning_news、sync、screenshotsなど
-├── tests/                      # E2Eテスト
-│   └── test_e2e_kanban.py      #   かんばんサニタイズテスト（17アサーション）
+│   ├── kanban_update.py        #   かんばんCLI（データサニタイズ + ステートマシン付き）
+│   ├── agentrec_advisor.py     #   エージェントモデル推薦（功過簿 + コスト最適化）
+│   ├── refresh_watcher.py      #   データ変更ウォッチャー
+│   └── ...                     #   fetch_morning_news、syncなど
+├── tests/
+│   ├── test_e2e_kanban.py      #   かんばんサニタイズテスト（17アサーション）
+│   └── test_state_machine_consistency.py  # ステートマシン一貫性テスト
 ├── data/                       # ランタイムデータ（gitignore対象）
 ├── docs/                       # ドキュメント＋スクリーンショット
 ├── install.sh                  # ワンクリックインストーラー
+├── start.sh                    # ワンクリック起動（ダッシュボード + データ同期）
+├── edict.service               # systemdサービス設定（本番デプロイ）
+├── edict.sh                    # サービス管理スクリプト（start/stop/restart/status）
 └── LICENSE                     # MIT
 ```
 
@@ -338,9 +382,16 @@ edict/
 |---|---|
 | **React 18フロントエンド** | TypeScript + Vite + Zustand、13コンポーネント |
 | **stdlibバックエンド** | `server.py`（`http.server`ベース、依存関係ゼロ） |
+| **EventBus** | Redis Streams Pub/Subによるサービス間疑結合通信 |
+| **Outbox Relay** | トランザクショナルOutboxパターンによる信頼性の高いイベント配信（at-least-once） |
+| **ステートマシン監査** | 厳格なライフサイクル状態遷移 + 完全な監査ログ（`audit.py`） |
+| **並列ディスパッチ** | Dispatch Worker：並列実行、指数バックオフリトライ、リソースロック |
+| **DAGオーケストレータ** | DAGベースのタスク分解と依存関係解決 |
 | **エージェント思考の可視化** | エージェントの思考、ツール呼び出し、結果をリアルタイム表示 |
-| **ワンクリックインストール** | ワークスペース作成からGateway再起動まで |
+| **ワンクリックインストール / 起動** | `install.sh`で自動設定、`start.sh`で全サービス起動 |
+| **systemd本番デプロイ** | `edict.service`でデーモンプロセス、起動時自動開始 |
 | **15秒自動同期** | カウントダウン付きライブデータリフレッシュ |
+| **ダッシュボード認証** | `auth.py`でログイン認証 |
 | **朝議セレモニー** | 没入型オープニングアニメーション |
 
 ---
@@ -367,7 +418,14 @@ edict/
 
 ### フェーズ2 — 制度的深化 🚧
 - [ ] 御裁可モード（ヒューマン・イン・ザ・ループ）
-- [ ] 功過簿（エージェントスコアリング）
+- [x] 功過簿（エージェントスコアリング + モデル推薦 + コスト最適化）
+- [x] EventBus（Redis Streams疑結合通信）
+- [x] Outbox Relay（トランザクショナルイベント配信）
+- [x] ステートマシン監査（厳格なライフサイクル + 監査ログ）
+- [x] 並列ディスパッチエンジン（指数バックオフリトライ + リソースロック）
+- [x] DAGオーケストレータ（タスク分解 + 依存関係解決）
+- [x] ダッシュボード認証（ログイン認証）
+- [x] ワンクリック起動 / systemd本番デプロイ
 - [ ] 急使（エージェント間メッセージ可視化）
 - [ ] 翰林院（ナレッジベース＋引用）
 

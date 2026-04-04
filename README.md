@@ -311,15 +311,35 @@ chmod +x install.sh && ./install.sh
 #### 启动
 
 ```bash
-# 终端 1：数据刷新循环
-bash scripts/run_loop.sh
+# 方式 1：一键启动（推荐）
+chmod +x start.sh && ./start.sh
 
-# 终端 2：看板服务器
-python3 dashboard/server.py
+# 方式 2：分别启动
+bash scripts/run_loop.sh &      # 数据刷新循环
+python3 dashboard/server.py     # 看板服务器
 
 # 打开浏览器
 open http://127.0.0.1:7891
 ```
+
+<details>
+<summary><b>🖥️ 生产环境部署（systemd）</b></summary>
+
+```bash
+# 安装 systemd 服务
+sudo cp edict.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable edict
+sudo systemctl start edict
+
+# 或使用管理脚本
+bash edict.sh start    # 启动
+bash edict.sh status   # 查看状态
+bash edict.sh restart  # 重启
+bash edict.sh stop     # 停止
+```
+
+</details>
 
 > 💡 **看板即开即用**：`server.py` 内嵌 `dashboard/dashboard.html`，Docker 镜像包含预构建的 React 前端
 
@@ -403,6 +423,9 @@ open http://127.0.0.1:7891
 
 > ⚡ **状态转换受保护**：`kanban_update.py` 内置 `_VALID_TRANSITIONS` 状态机校验，
 > 非法跳转（如 Doing→Taizi）会被拒绝并记录日志，确保流程不可绕过。
+>
+> 🔄 **异步事件驱动**：服务间通过 Redis Streams EventBus 解耦通信，Outbox Relay 保障事件可靠投递。
+> 所有状态变更自动写入审计日志（`audit.py`），支持完整追溯。
 
 ---
 
@@ -425,12 +448,32 @@ edict/
 ├── dashboard/
 │   ├── dashboard.html          # 军机处看板（单文件 · 零依赖 · ~2500 行）
 │   ├── dist/                   # React 前端构建产物（Docker 镜像内包含，本地可选）
+│   ├── auth.py                 # Dashboard 登录鉴权
 │   ├── court_discuss.py        # 朝堂议政（多官员 LLM 讨论引擎）
 │   └── server.py               # API 服务器（Python 标准库 · 零依赖 · ~2300 行）
+├── edict/backend/              # 异步后端服务（SQLAlchemy + Redis）
+│   ├── app/models/
+│   │   ├── task.py             # 任务模型 + 状态机
+│   │   ├── audit.py            # 审计日志模型
+│   │   └── outbox.py           # Outbox 消息模型
+│   ├── app/services/
+│   │   ├── event_bus.py        # Redis Streams EventBus
+│   │   └── task_service.py     # 任务服务层
+│   └── app/workers/
+│       ├── dispatch_worker.py  # 并行调度 + 重试 + 资源锁
+│       ├── orchestrator_worker.py  # DAG 编排器
+│       └── outbox_relay.py     # 事务性 Outbox Relay
+├── agents/
+│   ├── <agent_id>/SOUL.md      # 各省部 Agent 人格模板
+│   ├── GLOBAL.md               # 全局 Agent 配置
+│   └── groups/                 # Agent 分组（sansheng / liubu）
 ├── scripts/
 │   ├── run_loop.sh             # 数据刷新循环（每 15 秒）
-│   ├── kanban_update.py        # 看板 CLI（含旨意数据清洗 + 标题校验）
+│   ├── kanban_update.py        # 看板 CLI（含旨意数据清洗 + 标题校验 + 状态机）
 │   ├── skill_manager.py        # Skill 管理工具（远程/本地 Skills 添加、更新、移除）
+│   ├── agentrec_advisor.py     # Agent 模型推荐（功过簿 + 成本优化）
+│   ├── linucb_router.py        # LinUCB 智能路由
+│   ├── refresh_watcher.py      # 数据变更监听
 │   ├── sync_from_openclaw_runtime.py
 │   ├── sync_agent_config.py
 │   ├── sync_officials_stats.py
@@ -439,7 +482,8 @@ edict/
 │   ├── apply_model_changes.py
 │   └── file_lock.py            # 文件锁（防多 Agent 并发写入）
 ├── tests/
-│   └── test_e2e_kanban.py      # 端到端测试（17 个断言）
+│   ├── test_e2e_kanban.py      # 端到端测试（17 个断言）
+│   └── test_state_machine_consistency.py  # 状态机一致性测试
 ├── data/                       # 运行时数据（gitignored）
 ├── docs/
 │   ├── task-dispatch-architecture.md  # 📚 详细架构文档：任务分发、流转、调度的完整设计（业务+技术）
@@ -447,6 +491,9 @@ edict/
 │   ├── wechat-article.md              # 微信文章
 │   └── screenshots/                   # 功能截图（11 张）
 ├── install.sh                  # 一键安装脚本
+├── start.sh                    # 一键启动（Dashboard + 数据刷新）
+├── edict.service               # systemd 服务配置（生产部署）
+├── edict.sh                    # 服务管理脚本（start/stop/restart/status）
 ├── CONTRIBUTING.md             # 贡献指南
 └── LICENSE                     # MIT License
 ```
@@ -560,9 +607,16 @@ curl http://localhost:7891/api/remote-skills-list
 |------|------|
 | **React 18 前端** | TypeScript + Vite + Zustand 状态管理，13 个功能组件 |
 | **纯 stdlib 后端** | `server.py` 基于 `http.server`，零依赖，同时提供 API + 静态文件服务 |
+| **EventBus 事件总线** | Redis Streams 发布/订阅，服务间解耦通信 |
+| **Outbox Relay** | 事务性 Outbox 模式，保障事件可靠投递（至少一次语义） |
+| **状态机审计** | 严格生命周期状态转换 + 完整审计日志（`audit.py`） |
+| **并行调度引擎** | Dispatch Worker 支持并行执行、指数退避重试、资源锁 |
+| **DAG 编排器** | Orchestrator 基于 DAG 的任务分解与依赖解析 |
 | **Agent 思考可视** | 实时展示 Agent 的 thinking 过程、工具调用、返回结果 |
-| **一键安装** | `install.sh` 自动完成全部配置 |
+| **一键安装 / 一键启动** | `install.sh` 自动配置，`start.sh` 一条命令启动全部服务 |
+| **systemd 生产部署** | `edict.service` 支持 systemd 守护进程，开机自启 |
 | **15 秒同步** | 数据自动刷新，看板倒计时显示 |
+| **Dashboard 鉴权** | `auth.py` 提供看板登录认证 |
 | **每日仪式** | 首次打开播放上朝开场动画 |
 | **远程 Skills 生态** | 从 GitHub/URL 一键导入能力，支持版本管理 + CLI + API + UI |
 
@@ -697,7 +751,14 @@ python3 scripts/skill_manager.py import-official-hub --agents zhongshu
 
 ### Phase 2 — 制度深化 🚧
 - [ ] 御批模式（人工审批 + 一键准奏/封驳）
-- [ ] 功过簿（Agent 绩效评分体系）
+- [x] 功过簿（Agent 绩效评分 + 模型推荐 + 成本优化）
+- [x] EventBus 事件总线（Redis Streams 解耦通信）
+- [x] Outbox Relay（事务性事件投递）
+- [x] 状态机审计（严格生命周期 + 审计日志）
+- [x] 并行调度引擎（指数退避重试 + 资源锁）
+- [x] DAG 编排器（任务分解 + 依赖解析）
+- [x] Dashboard 鉴权（登录认证）
+- [x] 一键启动 / systemd 生产部署
 - [ ] 急递铺（Agent 间实时消息流可视化）
 - [ ] 国史馆（知识库检索 + 引用溯源）
 
