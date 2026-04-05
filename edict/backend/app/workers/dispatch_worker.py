@@ -26,6 +26,7 @@ import uuid
 from datetime import datetime, timezone
 
 from ..config import get_settings
+from scripts.runtime_adapter import dispatch_agent
 from ..services.event_bus import (
     EventBus,
     TOPIC_TASK_DISPATCH,
@@ -272,6 +273,9 @@ def _sanitize_agent_output(output: str, agent_id: str) -> tuple[str, list[str]]:
                 f"Agent {agent_id} 输出触发注入检测: '{match.group()}' (pattern: {pattern.pattern})"
             )
     return output, warnings
+
+def _dispatch_via_adapter(agent_id: str, prompt: str, timeout_sec: int = 300, deliver: bool = True):
+    return dispatch_agent(agent_id, prompt, timeout_sec=timeout_sec, deliver=deliver)
 
 
 def _load_agent_skills(agent_id: str, payload: dict) -> str:
