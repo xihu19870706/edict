@@ -84,7 +84,7 @@ def load_activity(session_file, limit=12):
         role = item.get('role')
         ts = item.get('timestamp') or ''
         raw = item.get('raw') or {}
-        msg = raw.get('message') or {}
+        msg = item.get('content') or raw.get('message') or {}
 
         if role == 'toolResult':
             tool = msg.get('toolName', '-')

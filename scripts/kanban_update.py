@@ -47,30 +47,35 @@ from scripts.runtime_adapter import ensure_openclaw_ready, dispatch_agent  # noq
 
 # ── 从 task.py 动态加载权威状态转换表（Single Source of Truth）──
 def _load_canonical_transitions() -> dict:
-    """从 edict/backend 源码解析状态转换表，无需 import（避免 SQLAlchemy 依赖）。"""
-    task_py = _BASE / "edict" / "backend" / "app" / "models" / "task.py"
-    source = task_py.read_text(encoding="utf-8")
+    """优先从 edict/backend 导入权威状态机；无依赖时 fallback 到源码解析。"""
+    try:
+        from edict.backend.app.models.task import TaskState, STATE_TRANSITIONS  # type: ignore
+        _ = TaskState  # keep import for authority and compatibility
+        return STATE_TRANSITIONS
+    except Exception:
+        task_py = _BASE / "edict" / "backend" / "app" / "models" / "task.py"
+        source = task_py.read_text(encoding="utf-8")
 
-    m = re.search(r"STATE_TRANSITIONS\s*=\s*\{", source)
-    if not m:
-        return None
-    start = m.start()
-    depth = 0
-    end = start
-    for i, ch in enumerate(source[start:], start):
-        if ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0:
-                end = i + 1
-                break
-    block = source[start:end]
-    cleaned = re.sub(r"TaskState\.(\w+)", r'"\1"', block)
-    cleaned = cleaned.replace("STATE_TRANSITIONS =", "_result =")
-    local_ns = {}
-    exec(cleaned, {}, local_ns)  # noqa: S102
-    return local_ns["_result"]
+        m = re.search(r"STATE_TRANSITIONS\s*=\s*\{", source)
+        if not m:
+            return None
+        start = m.start()
+        depth = 0
+        end = start
+        for i, ch in enumerate(source[start:], start):
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i + 1
+                    break
+        block = source[start:end]
+        cleaned = re.sub(r"TaskState\.(\w+)", r'"\1"', block)
+        cleaned = cleaned.replace("STATE_TRANSITIONS =", "_result =")
+        local_ns = {}
+        exec(cleaned, {}, local_ns)  # noqa: S102
+        return local_ns["_result"]
 
 
 STATE_ORG_MAP = {
