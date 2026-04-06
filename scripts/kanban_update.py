@@ -316,7 +316,7 @@ def cmd_create(task_id, title, state, org, official, remark=None):
 
 
 # ── 状态流转合法性校验 ──
-# 从 task.py 动态加载（如果 edict 目录存在），否则使用内置 fallback
+# 从 task.py 动态加载（权威状态机来源）
 _edict_task_path = _BASE / "edict" / "backend" / "app" / "models" / "task.py"
 if _edict_task_path.exists():
     _VALID_TRANSITIONS = _load_canonical_transitions()
