@@ -601,37 +601,13 @@ class DispatchWorker:
             except Exception as e:
                 log.warning(f"Failed to write context file for {task_id}: {e}")
 
-        log.debug(f"Executing: {' '.join(cmd)}")
-
-        def _run():
+        result = dispatch_agent(agent_id, prompt, timeout_sec=300, deliver=True)
+        if context_file:
             try:
-                proc = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=300,
-                    env=env,
-                    cwd=settings.openclaw_project_dir or None,
-                )
-                return {
-                    "returncode": proc.returncode,
-                    "stdout": proc.stdout[-5000:] if proc.stdout else "",
-                    "stderr": proc.stderr[-2000:] if proc.stderr else "",
-                }
-            except subprocess.TimeoutExpired:
-                return {"returncode": -1, "stdout": "", "stderr": "TIMEOUT after 300s"}
-            except FileNotFoundError:
-                return {"returncode": -1, "stdout": "", "stderr": "openclaw command not found"}
-            finally:
-                # 清理临时上下文文件
-                if context_file:
-                    try:
-                        os.unlink(context_file)
-                    except OSError:
-                        pass
-
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _run)
+                os.unlink(context_file)
+            except OSError:
+                pass
+        return result
 
 
 async def run_dispatcher():
