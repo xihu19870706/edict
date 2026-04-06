@@ -6,6 +6,7 @@ import datetime
 import traceback
 import logging
 from file_lock import atomic_json_write, atomic_json_read
+from scripts.runtime_adapter import normalize_runtime_event, read_runtime_sessions  # noqa: E402
 
 log = logging.getLogger('sync_runtime')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(name)s] %(message)s', datefmt='%H:%M:%S')

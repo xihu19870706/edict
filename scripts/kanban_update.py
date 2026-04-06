@@ -42,6 +42,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(name)s] %(message
 # 文件锁 —— 防止多 Agent 同时读写 tasks_source.json
 from file_lock import atomic_json_read, atomic_json_update  # noqa: E402
 from utils import now_iso  # noqa: E402
+from scripts.runtime_adapter import ensure_openclaw_ready, dispatch_agent  # noqa: E402
 
 
 # ── 从 task.py 动态加载权威状态转换表（Single Source of Truth）──

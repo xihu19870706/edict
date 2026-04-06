@@ -2,6 +2,7 @@
 import json, pathlib, datetime, logging
 from file_lock import atomic_json_write, atomic_json_read
 from utils import read_json
+from scripts.runtime_adapter import ensure_openclaw_ready  # noqa: E402
 
 log = logging.getLogger('refresh')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(name)s] %(message)s', datefmt='%H:%M:%S')
