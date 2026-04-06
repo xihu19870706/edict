@@ -284,6 +284,7 @@ docker compose up
 
 #### 前置条件
 - [OpenClaw](https://openclaw.ai) 已安装
+- 先确认 OpenClaw gateway 可用（运行 `openclaw gateway status` 检查）
 - Python 3.9+
 - macOS / Linux
 

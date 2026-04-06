@@ -32,6 +32,8 @@
     .hdr-r{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     .chip{font-size:11px;padding:3px 9px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--muted)}
     .chip.ok{border-color:#2ecc8a44;color:var(--ok)}.chip.warn{border-color:#f5c84244;color:var(--warn)}.chip.err{border-color:#ff527044;color:var(--danger)}
+    .chip.sys-ok{border-color:#2ecc8a44;color:var(--ok)}.chip.sys-warn{border-color:#f5c84244;color:var(--warn)}.chip.sys-err{border-color:#ff527044;color:var(--danger)}
+    .sys-note{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.4}
     .btn-refresh{font-size:11px;padding:4px 10px;border:1px solid var(--acc);border-radius:6px;background:transparent;color:var(--acc);cursor:pointer}
     .btn-refresh:hover{background:#0a1228}
     #cd{font-size:11px;color:var(--muted)}
@@ -673,6 +675,7 @@
       <button class="theme-toggle" onclick="openFeedback()" title="祈告上苍（反馈问题或建议）">🙏 祈告上苍</button>
       <span class="chip" id="chip-sync">⟳ 同步中</span>
       <span class="chip" id="chip-tasks">— 旨意</span>
+      <span class="chip sys-ok" id="chip-gateway" title="OpenClaw Gateway 状态">🟢 Gateway</span>
       <button class="btn-refresh" onclick="loadAll()">⟳ 立即刷新</button>
       <span id="cd"></span>
     </div>
@@ -1984,8 +1987,25 @@ async function loadAgentConfig(){
     renderSkills(agentConfig);
     const log=await fetchJ(API+'/model-change-log').catch(()=>[]);
     renderCL(log);
+    loadGatewayStatus();
   }catch(e){
     document.getElementById('model-grid').innerHTML='<div class="empty" style="grid-column:1/-1">⚠️ 请先启动本地服务器：<code>python3 dashboard/server.py</code></div>';
+  }
+}
+async function loadGatewayStatus(){
+  const el = document.getElementById('chip-gateway');
+  if(!el) return;
+  try{
+    const cfg = await fetchJ(API+'/agent-config');
+    const gw = cfg.gateway || {};
+    const ok = gw.alive !== false && gw.status !== 'down' && gw.status !== 'offline';
+    el.textContent = ok ? '🟢 系统状态' : '🟡 系统状态';
+    el.className = 'chip ' + (ok ? 'sys-ok' : 'sys-warn');
+    el.title = ok ? 'OpenClaw Gateway 可用' : 'OpenClaw Gateway 不可用或未完全就绪';
+  }catch(e){
+    el.textContent = '🔴 系统状态';
+    el.className = 'chip sys-err';
+    el.title = '无法读取 /api/agent-config，OpenClaw Gateway 可能不可用';
   }
 }
 async function loadAll(){

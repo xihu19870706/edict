@@ -197,6 +197,7 @@ Open http://localhost:7891
 ### Full Install
 
 **Prerequisites:** [OpenClaw](https://openclaw.ai) · Python 3.9+ · macOS/Linux
+- Make sure OpenClaw gateway is available first (`openclaw gateway status`)
 
 ```bash
 git clone https://github.com/cft0808/edict.git
