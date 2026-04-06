@@ -99,9 +99,13 @@ def add_remote(agent_id: str, name: str, source_url: str, description: str = '')
     skill_md.write_text(content)
     
     # 保存源信息
+    source_type = 'url'
+    if source_url.startswith('https://raw.githubusercontent.com/openclaw-ai/skills-hub/') or source_url.startswith('https://ghproxy.com/https://raw.githubusercontent.com/openclaw-ai/skills-hub/') or source_url.startswith('https://raw.gitmirror.com/openclaw-ai/skills-hub/'):
+        source_type = 'clawhub'
     source_info = {
         'skillName': name,
         'sourceUrl': source_url,
+        'source_type': source_type,
         'description': description,
         'addedAt': now_iso(),
         'lastUpdated': now_iso(),
@@ -146,6 +150,7 @@ def list_remote() -> bool:
                     'agent': agent_id,
                     'skill': skill_name,
                     'source': source_info.get('sourceUrl', 'N/A'),
+                    'source_type': source_info.get('source_type', 'url'),
                     'desc': source_info.get('description', ''),
                     'added': source_info.get('addedAt', 'N/A'),
                 })
@@ -157,12 +162,12 @@ def list_remote() -> bool:
         return True
     
     print(f'📋 共 {len(remote_skills)} 个远程 skills：\n')
-    print(f'{"Agent":<12} | {"Skill 名称":<20} | {"描述":<30} | 添加时间')
+    print(f'{"Agent":<12} | {"Skill 名称":<20} | {"来源类型":<8} | {"描述":<30} | 添加时间')
     print('-' * 100)
-    
+
     for sk in remote_skills:
         desc = (sk['desc'] or sk['source'])[:30].ljust(30)
-        print(f"{sk['agent']:<12} | {sk['skill']:<20} | {desc} | {sk['added'][:10]}")
+        print(f"{sk['agent']:<12} | {sk['skill']:<20} | {sk['source_type']:<8} | {desc} | {sk['added'][:10]}")
     
     print()
     return True

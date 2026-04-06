@@ -32,6 +32,7 @@ from court_discuss import (
     list_sessions as cd_list, destroy_session as cd_destroy,
     get_fate_event as cd_fate, OFFICIAL_PROFILES as CD_PROFILES,
 )
+from runtime_adapter import ensure_openclaw_ready
 
 log = logging.getLogger('server')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(name)s] %(message)s', datefmt='%H:%M:%S')
@@ -74,6 +75,13 @@ _MIME_TYPES = {
     '.ttf':  'font/ttf',
     '.map':  'application/json',
 }
+
+
+def _check_openclaw_gateway_startup():
+    try:
+        ensure_openclaw_ready()
+    except Exception as e:
+        log.warning('OpenClaw gateway unavailable at startup: %s', e)
 
 
 def cors_headers(h):
@@ -2748,6 +2756,7 @@ def main():
         log.info('🔓 认证未配置，所有 API 公开访问（POST /api/auth/setup 设置密码）')
 
     migrate_notification_config()
+    _check_openclaw_gateway_startup()
 
     # 启动恢复：重新派发上次被 kill 中断的 queued 任务
     threading.Timer(3.0, _startup_recover_queued_dispatches).start()
