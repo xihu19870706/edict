@@ -20,6 +20,11 @@ def output_meta(path):
 
 
 def main():
+    caps = ensure_openclaw_ready()
+    if not caps.get("gateway_ok", False):
+        log.warning("OpenClaw gateway 不可用，跳过 live_status 同步")
+        return
+
     runtime = ensure_openclaw_ready()
     if not runtime.get('gateway_ok'):
         log.warning('openclaw gateway 不可用，跳过 refresh_live_data 同步')

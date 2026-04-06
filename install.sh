@@ -57,6 +57,22 @@ check_deps() {
     exit 1
   fi
   log "openclaw.json: $OC_CFG"
+
+  # 检查 OpenClaw Gateway 状态
+  info "检查 OpenClaw Gateway..."
+  if openclaw gateway status &>/dev/null; then
+    log "OpenClaw Gateway: 可用"
+  else
+    warn "OpenClaw Gateway: 不可用（后续 agent 派发可能失败）"
+  fi
+
+  # 检查 OpenClaw Skills 配置
+  info "检查 OpenClaw Skills..."
+  if openclaw skills check &>/dev/null; then
+    log "OpenClaw Skills: 配置正常"
+  else
+    warn "OpenClaw Skills: 检查失败（部分 skill 可能不可用）"
+  fi
 }
 
 # ── Step 0.5: 备份已有 Agent 数据 ──────────────────────────────
