@@ -74,16 +74,17 @@ def load_activity(session_file, limit=12):
     for ln in lines:
         try:
             item = json.loads(ln)
-            events.append(item)
+            events.append(normalize_runtime_event(item))
         except:
             continue
 
     # Process events to extract meaningful activity
     # We want to show what the agent is *thinking* or *doing*
     for item in reversed(events):
-        msg = item.get('message') or {}
-        role = msg.get('role')
+        role = item.get('role')
         ts = item.get('timestamp') or ''
+        raw = item.get('raw') or {}
+        msg = raw.get('message') or {}
 
         if role == 'toolResult':
             tool = msg.get('toolName', '-')
@@ -112,7 +113,7 @@ def load_activity(session_file, limit=12):
                 if len(summary) > 200:
                     summary = summary[:200] + '...'
                 rows.append({'at': ts, 'kind': 'assistant', 'text': summary})
-                
+
         elif role == 'user':
              # Also show what user asked, can be context relevant
              text = ''

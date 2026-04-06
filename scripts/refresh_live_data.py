@@ -20,6 +20,11 @@ def output_meta(path):
 
 
 def main():
+    runtime = ensure_openclaw_ready()
+    if not runtime.get('gateway_ok'):
+        log.warning('openclaw gateway 不可用，跳过 refresh_live_data 同步')
+        return
+
     # 使用 officials_stats.json（与 sync_officials_stats.py 统一）
     officials_data = read_json(DATA / 'officials_stats.json', {})
     officials = officials_data.get('officials', []) if isinstance(officials_data, dict) else officials_data

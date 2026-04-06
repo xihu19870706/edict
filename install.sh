@@ -40,6 +40,18 @@ check_deps() {
   fi
   log "Python3: $(python3 --version)"
 
+  if ! openclaw gateway status >/dev/null 2>&1; then
+    error "OpenClaw Gateway 不可用，请先启动 gateway"
+    exit 1
+  fi
+  log "OpenClaw Gateway: OK"
+
+  if ! openclaw skills check >/dev/null 2>&1; then
+    error "OpenClaw skills 检查失败，请先修复 skills 配置"
+    exit 1
+  fi
+  log "OpenClaw Skills: OK"
+
   if [ ! -f "$OC_CFG" ]; then
     error "未找到 openclaw.json。请先运行 openclaw 完成初始化。"
     exit 1
