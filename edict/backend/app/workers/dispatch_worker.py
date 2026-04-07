@@ -274,9 +274,6 @@ def _sanitize_agent_output(output: str, agent_id: str) -> tuple[str, list[str]]:
             )
     return output, warnings
 
-def _dispatch_via_adapter(agent_id: str, prompt: str, timeout_sec: int = 300, deliver: bool = True):
-    return dispatch_agent(agent_id, prompt, timeout_sec=timeout_sec, deliver=deliver)
-
 
 def _load_agent_skills(agent_id: str, payload: dict) -> str:
     """按任务特征动态加载 Agent Skills（延迟能力加载）。"""
@@ -482,17 +479,19 @@ class DispatchWorker:
 
                 # 失败分类
                 stderr = result.get("stderr", "")
-                if "TIMEOUT" in stderr:
+                stdout = result.get("stdout", "")
+                timed_out = result.get("timed_out", False)
+                if timed_out or "TIMEOUT" in stderr:
                     raise DispatchError("Agent timeout", retryable=True)
-                elif "command not found" in stderr:
+                elif "command not found" in stderr or result.get("returncode") == 127:
                     raise DispatchError("openclaw binary missing", retryable=False)
-                elif result["returncode"] in (1, 2):
+                elif result.get("returncode") in (1, 2):
                     raise DispatchError(
-                        f"Agent failed: rc={result['returncode']}", retryable=True
+                        f"Agent failed: rc={result.get('returncode')}, stderr={stderr[:200]}", retryable=True
                     )
                 else:
                     raise DispatchError(
-                        f"Unknown error: rc={result['returncode']}", retryable=False
+                        f"Unknown error: rc={result.get('returncode')}, stderr={stderr[:200]}", retryable=False
                     )
 
             except DispatchError as e:
@@ -551,21 +550,13 @@ class DispatchWorker:
         trace_id: str,
         payload: dict | None = None,
     ) -> dict:
-        """异步调用 OpenClaw CLI — 在线程池中执行，带富上下文注入。"""
-        settings = get_settings()
-        cmd = [
-            settings.openclaw_bin,
-            "agent",
-            "--agent", agent,
-            "-m", message,
-        ]
-
+        """异步调用 OpenClaw CLI — 通过 runtime_adapter 派发，注入上下文环境变量。"""
         env = os.environ.copy()
         env["EDICT_TASK_ID"] = task_id
         env["EDICT_TRACE_ID"] = trace_id
+        settings = get_settings()
         env["EDICT_API_URL"] = f"http://localhost:{settings.port}"
 
-        # 注入额外上下文环境变量
         if payload:
             env["EDICT_TASK_TITLE"] = payload.get("title", "")
             env["EDICT_TASK_STATE"] = payload.get("state", "")
@@ -601,7 +592,7 @@ class DispatchWorker:
             except Exception as e:
                 log.warning(f"Failed to write context file for {task_id}: {e}")
 
-        result = dispatch_agent(agent, message, timeout_sec=300, deliver=True)
+        result = dispatch_agent(agent, message, timeout_sec=300, deliver=True, env=env)
         if context_file:
             try:
                 os.unlink(context_file)

@@ -30,13 +30,48 @@ class RuntimeCapabilities:
     gh_ok: bool
 
 
-def _run(cmd: list[str], timeout: int = 30) -> tuple[int, str]:
+def _run_full(cmd: list[str], timeout: int = 30, env: dict | None = None) -> dict[str, Any]:
+    """执行命令并返回完整的 stdout/stderr/timeout 信息。"""
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-        out = (proc.stdout or "") + ("\n" + proc.stderr if proc.stderr else "")
-        return proc.returncode, out.strip()
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout, env=env
+        )
+        return {
+            "returncode": proc.returncode,
+            "stdout": (proc.stdout or "").strip(),
+            "stderr": (proc.stderr or "").strip(),
+            "timed_out": False,
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "returncode": -1,
+            "stdout": "",
+            "stderr": f"TIMEOUT: command exceeded {timeout}s",
+            "timed_out": True,
+        }
+    except FileNotFoundError:
+        return {
+            "returncode": 127,
+            "stdout": "",
+            "stderr": f"command not found: {cmd[0]}",
+            "timed_out": False,
+        }
     except Exception as e:
-        return 1, str(e)
+        return {
+            "returncode": 1,
+            "stdout": "",
+            "stderr": str(e),
+            "timed_out": False,
+        }
+
+
+def _run(cmd: list[str], timeout: int = 30) -> tuple[int, str]:
+    """简化版：只返回 (returncode, combined_output)。用于能力探测等非关键路径。"""
+    result = _run_full(cmd, timeout=timeout)
+    out = result["stdout"]
+    if result["stderr"]:
+        out += ("\n" + result["stderr"]) if out else result["stderr"]
+    return result["returncode"], out.strip()
 
 
 def get_openclaw_bin() -> str:
@@ -90,17 +125,27 @@ def ensure_openclaw_ready() -> dict[str, Any]:
     }
 
 
-def dispatch_agent(agent_id: str, prompt: str, *, timeout_sec: int = 300, deliver: bool = True) -> dict[str, Any]:
+def dispatch_agent(
+    agent_id: str,
+    prompt: str,
+    *,
+    timeout_sec: int = 300,
+    deliver: bool = True,
+    env: dict | None = None,
+) -> dict[str, Any]:
     """派发一个 agent 任务。
 
-    先用当前 OpenClaw CLI 方式实现，后续如果版本变化只改这里。
+    返回结构包含 stdout/stderr/returncode/timed_out，方便上层做错误分类。
     """
     bin_path = get_openclaw_bin()
     cmd = [bin_path, "agent", "--agent", agent_id, "-m", prompt, "--timeout", str(timeout_sec)]
     if deliver:
         cmd.append("--deliver")
-    rc, out = _run(cmd, timeout=timeout_sec + 30)
-    return {"returncode": rc, "output": out, "command": cmd}
+    result = _run_full(cmd, timeout=timeout_sec + 30, env=env)
+    result["command"] = cmd
+    # 兼容旧调用方：output = stdout + stderr
+    result["output"] = (result["stdout"] + "\n" + result["stderr"]).strip() if result["stderr"] else result["stdout"]
+    return result
 
 
 def read_runtime_sessions(session_dir: str | None = None) -> list[dict[str, Any]]:
