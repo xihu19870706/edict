@@ -601,7 +601,7 @@ class DispatchWorker:
             except Exception as e:
                 log.warning(f"Failed to write context file for {task_id}: {e}")
 
-        result = dispatch_agent(agent_id, prompt, timeout_sec=300, deliver=True)
+        result = dispatch_agent(agent, message, timeout_sec=300, deliver=True)
         if context_file:
             try:
                 os.unlink(context_file)
