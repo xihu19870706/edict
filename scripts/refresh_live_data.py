@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
-import json, pathlib, datetime, logging
+import json, pathlib, datetime, logging, sys
 from file_lock import atomic_json_write, atomic_json_read
 from utils import read_json
+
+# Add project root to sys.path for imports
+BASE = pathlib.Path(__file__).resolve().parent.parent
+PROJECT_ROOT = BASE
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from scripts.runtime_adapter import ensure_openclaw_ready  # noqa: E402
 
 log = logging.getLogger('refresh')

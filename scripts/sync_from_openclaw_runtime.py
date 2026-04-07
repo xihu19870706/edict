@@ -6,6 +6,12 @@ import datetime
 import traceback
 import logging
 from file_lock import atomic_json_write, atomic_json_read
+
+# Add project root to sys.path for imports
+PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in __import__('sys').path:
+    __import__('sys').path.insert(0, str(PROJECT_ROOT))
+
 from scripts.runtime_adapter import normalize_runtime_event, read_runtime_sessions  # noqa: E402
 
 log = logging.getLogger('sync_runtime')
@@ -84,29 +90,41 @@ def load_activity(session_file, limit=12):
         role = item.get('role')
         ts = item.get('timestamp') or ''
         raw = item.get('raw') or {}
-        msg = item.get('content') or raw.get('message') or {}
+        raw_msg = item.get('content') or raw.get('message') or {}
+        # Normalize: msg should be a dict
+        msg = raw_msg if isinstance(raw_msg, dict) else {}
 
         if role == 'toolResult':
             tool = msg.get('toolName', '-')
             details = msg.get('details') or {}
             # If tool output is short, show it
-            content = msg.get('content', [{'text': ''}])[0].get('text', '')
-            if len(content) < 50:
-                text = f"Tool '{tool}' returned: {content}"
+            msg_content = msg.get('content', [{'text': ''}])
+            if isinstance(msg_content, list) and msg_content:
+                try:
+                    first = msg_content[0]
+                    c_text = first.get('text', '') if isinstance(first, dict) else str(first)
+                except (IndexError, TypeError):
+                    c_text = ''
+                if len(c_text) < 50:
+                    text = f"Tool '{tool}' returned: {c_text}"
+                else:
+                    text = f"Tool '{tool}' finished"
             else:
                 text = f"Tool '{tool}' finished"
             rows.append({'at': ts, 'kind': 'tool', 'text': text})
 
         elif role == 'assistant':
             text = ''
-            for c in msg.get('content', []):
-                if c.get('type') == 'text' and c.get('text'):
-                    raw_text = c.get('text').strip()
-                    # Clean up common prefixes
-                    clean_text = raw_text.replace('[[reply_to_current]]', '').strip()
-                    if clean_text:
-                        text = clean_text
-                    break
+            msg_content = msg.get('content', [])
+            if isinstance(msg_content, list):
+                for c in msg_content:
+                    if isinstance(c, dict) and c.get('type') == 'text' and c.get('text'):
+                        raw_text = c.get('text').strip()
+                        # Clean up common prefixes
+                        clean_text = raw_text.replace('[[reply_to_current]]', '').strip()
+                        if clean_text:
+                            text = clean_text
+                        break
             if text:
                 # Prioritize showing the "thought" - usually the first few sentences
                 summary = text.split('\n')[0]
@@ -117,9 +135,11 @@ def load_activity(session_file, limit=12):
         elif role == 'user':
              # Also show what user asked, can be context relevant
              text = ''
-             for c in msg.get('content', []):
-                if c.get('type') == 'text':
-                     text = c.get('text', '')[:100]
+             msg_content = msg.get('content', [])
+             if isinstance(msg_content, list):
+                 for c in msg_content:
+                    if isinstance(c, dict) and c.get('type') == 'text':
+                         text = c.get('text', '')[:100]
              if text:
                  rows.append({'at': ts, 'kind': 'user', 'text': f"User: {text}..."})
 
