@@ -488,7 +488,6 @@ def cmd_done(task_id, output_path='', summary=''):
         if is_liubu and t.get('state') == 'Review':
             # 六部在 Review 阶段继续汇报 → 追加到已汇报列表，不推进为 Done
             t.setdefault('_liubu_reported', [])
-            t.setdefault('_liubu_expected', ['gongbu', 'bingbu', 'hubu', 'libu', 'xingbu'])
             if caller not in t['_liubu_reported']:
                 t['_liubu_reported'].append(caller)
             t.setdefault('flow_log', []).append({
@@ -506,7 +505,7 @@ def cmd_done(task_id, output_path='', summary=''):
 
         # 尚书省在 Review 阶段调用 done → 必须等所有六部 agent 都汇报完
         if not is_liubu and t.get('state') == 'Review':
-            expected = set(t.get('_liubu_expected', ['gongbu', 'bingbu', 'hubu', 'libu', 'xingbu']))
+            expected = set(t.get('_liubu_expected', []))
             reported = set(t.get('_liubu_reported', []))
             pending = expected - reported
             if pending:
