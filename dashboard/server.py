@@ -2053,6 +2053,7 @@ def dispatch_for_state(task_id, task, new_state, trigger='state-transition'):
                 'lastDispatchAgent': ','.join(liubu_agents),
                 'lastDispatchTrigger': trigger,
             }),
+            (t.__setitem__('_liubu_expected', list(liubu_agents)) or True),
             _scheduler_add_flow(t, f'已入队派发：Doing → 六部（{",".join(liubu_agents)}，{trigger}）', to='六部')
         ))
 

@@ -174,7 +174,7 @@ AGENT_POLICY = {
     "taizi":    {"role": "coordination", "commands": {"create", "state", "flow", "progress", "todo", "memory", "task-memo"}},
     "zhongshu": {"role": "coordination", "commands": {"state", "flow", "progress", "todo", "memory", "task-memo", "delegate"}},
     "menxia":   {"role": "coordination", "commands": {"state", "flow", "progress", "todo", "confirm", "memory", "task-memo"}},
-    "shangshu": {"role": "coordination", "commands": {"state", "flow", "progress", "todo", "confirm", "delegate", "memory", "task-memo", "shared-memo"}},
+    "shangshu": {"role": "coordination", "commands": {"state", "flow", "progress", "todo", "confirm", "delegate", "memory", "task-memo", "shared-memo", "done"}},
     "zaochao":  {"role": "coordination", "commands": {"progress", "todo", "memory"}},
     "hubu":     {"role": "execution", "commands": {"progress", "todo", "done", "block", "memory", "task-memo", "delegate-result"}},
     "libu":     {"role": "execution", "commands": {"progress", "todo", "done", "block", "memory", "task-memo", "delegate-result"}},
@@ -451,6 +451,7 @@ def cmd_done(task_id, output_path='', summary=''):
         # 六部 agent 完成时：
         # - 若当前为 Doing/六部 → 推进到 Review（尚书省汇总）
         # - 若已在 Review（尚书省审阅中）→ 只记录完成日志，不重复推进为 Done
+        # - 同时追加到 _liubu_reported，供 shangshu done 时审查
         caller = _infer_agent_id_from_runtime(t)
         liubu_agents = {'gongbu', 'bingbu', 'hubu', 'libu', 'xingbu', 'libu_hr'}
         is_liubu = caller in liubu_agents
@@ -465,6 +466,16 @@ def cmd_done(task_id, output_path='', summary=''):
                 "at": now_iso(), "from": "六部",
                 "to": "尚书省", "remark": f"✅ 六部完成（{caller}），等待尚书省汇总"
             })
+            # 记录已汇报的六部 agent
+            t.setdefault('_liubu_expected', [])
+            t.setdefault('_liubu_reported', [])
+            if not t['_liubu_expected']:
+                # 首次记录：所有六部 agent 都预期会汇报
+                from scripts.runtime_adapter import _infer_liubu_agents as _infer
+                # 用默认的六部列表作为预期
+                t['_liubu_expected'] = ['gongbu', 'bingbu', 'hubu', 'libu', 'xingbu']
+            if caller not in t['_liubu_reported']:
+                t['_liubu_reported'].append(caller)
             if output_path:
                 p = pathlib.Path(output_path)
                 if p.exists():
@@ -475,14 +486,38 @@ def cmd_done(task_id, output_path='', summary=''):
             return tasks
 
         if is_liubu and t.get('state') == 'Review':
-            # 六部重复调用 done → 已在 Review，不重复推进为 Done，只记录
+            # 六部在 Review 阶段继续汇报 → 追加到已汇报列表，不推进为 Done
+            t.setdefault('_liubu_reported', [])
+            t.setdefault('_liubu_expected', ['gongbu', 'bingbu', 'hubu', 'libu', 'xingbu'])
+            if caller not in t['_liubu_reported']:
+                t['_liubu_reported'].append(caller)
             t.setdefault('flow_log', []).append({
                 "at": now_iso(), "from": "六部",
                 "to": "尚书省", "remark": f"📝 {caller} 完成报告：{summary or '执行完毕'}"
             })
+            # 更新汇总进度描述
+            reported = set(t['_liubu_reported'])
+            expected = set(t['_liubu_expected'])
+            pending = expected - reported
+            t['now'] = f'六部汇报中（{len(reported)}/{len(expected)}）：{sorted(reported)}，还缺{sorted(pending)}'
             t['updatedAt'] = now_iso()
             _append_audit(task_id, caller, 'done (六部, already Review)', None, output_path, summary)
             return tasks
+
+        # 尚书省在 Review 阶段调用 done → 必须等所有六部 agent 都汇报完
+        if not is_liubu and t.get('state') == 'Review':
+            expected = set(t.get('_liubu_expected', ['gongbu', 'bingbu', 'hubu', 'libu', 'xingbu']))
+            reported = set(t.get('_liubu_reported', []))
+            pending = expected - reported
+            if pending:
+                log.warning(f'⚠️ {task_id} 尚书省尝试 done 但还有 {{pending}} 未汇报，拒绝 Done，等待全部汇报')
+                t.setdefault('flow_log', []).append({
+                    "at": now_iso(), "from": "尚书省",
+                    "to": "尚书省", "remark": f"⚠️ 尚书省尝试提前汇总，但 {sorted(pending)} 尚未汇报，暂不 done"
+                })
+                t['updatedAt'] = now_iso()
+                _append_audit(task_id, caller, 'done rejected (六部 pending)', None, output_path, summary)
+                return tasks
 
         t['state'] = 'Done'
         t['output'] = output_path
