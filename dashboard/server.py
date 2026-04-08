@@ -2087,7 +2087,7 @@ def dispatch_for_state(task_id, task, new_state, trigger='state-transition'):
                     if _channel:
                         cmd.extend(['--deliver', '--channel', _channel])
                     log.info(f'🔄 六部派发 {task_id} → {aid} ...')
-                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=310)
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=920)
                     if result.returncode == 0:
                         log.info(f'✅ 六部派发成功 {task_id} → {aid}')
                     else:
@@ -2201,7 +2201,7 @@ def dispatch_for_state(task_id, task, new_state, trigger='state-transition'):
             err = ''
             for attempt in range(1, max_retries + 1):
                 log.info(f'🔄 自动派发 {task_id} → {agent_id} (第{attempt}次)...')
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=310)
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=920)
                 if result.returncode == 0:
                     log.info(f'✅ {task_id} 自动派发成功 → {agent_id}')
                     _update_task_scheduler(task_id, lambda t, s: (
