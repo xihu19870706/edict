@@ -32,7 +32,13 @@
 import datetime
 import json, pathlib, sys, subprocess, logging, os, re
 
+# Ensure project root and scripts package are importable when run directly
 _BASE = pathlib.Path(os.environ['EDICT_HOME']) if 'EDICT_HOME' in os.environ else pathlib.Path(__file__).resolve().parent.parent
+if str(_BASE) not in sys.path:
+    sys.path.insert(0, str(_BASE))
+if str(_BASE / 'scripts') not in sys.path:
+    sys.path.insert(0, str(_BASE / 'scripts'))
+
 TASKS_FILE = _BASE / 'data' / 'tasks_source.json'
 REFRESH_SCRIPT = _BASE / 'scripts' / 'refresh_live_data.py'
 

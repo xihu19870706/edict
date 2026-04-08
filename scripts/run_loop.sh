@@ -77,6 +77,14 @@ while true; do
   safe_run "$SCRIPT_DIR/sync_officials_stats.py"
   safe_run "$SCRIPT_DIR/refresh_live_data.py"
 
+  # 保证 agent_watcher 常驻：不在则拉起
+  WATCHER_PIDFILE="$SCRIPT_DIR/../data/.agent_watcher_pid"
+  if [[ ! -f "$WATCHER_PIDFILE" ]]; then
+    nohup python3 "$SCRIPT_DIR/agent_watcher.py" >> "$LOG" 2>&1 &
+    echo "$(date '+%H:%M:%S') [loop] 🚀 已启动 agent_watcher" >> "$LOG"
+    sleep 1
+  fi
+
   # 定期巡检：检测卡住的任务并自动重试
   SCAN_COUNTER=$((SCAN_COUNTER + INTERVAL))
   if (( SCAN_COUNTER >= SCAN_INTERVAL )); then

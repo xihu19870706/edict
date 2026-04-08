@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-import json, pathlib, datetime, logging
+import json, pathlib, datetime, logging, sys
+
+BASE = pathlib.Path(__file__).parent.parent
+if str(BASE) not in sys.path:
+    sys.path.insert(0, str(BASE))
+if str(BASE / 'scripts') not in sys.path:
+    sys.path.insert(0, str(BASE / 'scripts'))
+
 from file_lock import atomic_json_write, atomic_json_read
 from utils import read_json
 from scripts.runtime_adapter import ensure_openclaw_ready  # noqa: E402
@@ -39,6 +46,11 @@ def main():
         tasks = read_json(DATA / 'tasks.json', [])
 
     sync_status = read_json(DATA / 'sync_status.json', {})
+    if not isinstance(sync_status, dict):
+        sync_status = {}
+    sync_status.setdefault('ok', True)
+    sync_status.setdefault('source', 'tasks_source_json')
+    sync_status.setdefault('lastSyncAt', datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
     org_map = {}
     for o in officials:
