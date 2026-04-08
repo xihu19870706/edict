@@ -6,7 +6,17 @@ set -e
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OC_HOME="$HOME/.openclaw"
-OC_CFG="$OC_HOME/openclaw.json"
+OC_CFG_DEFAULT="$OC_HOME/openclaw.json"
+OC_CFG_ALT="$OC_HOME/config.json"
+if [ -n "$OPENCLAW_CONFIG_PATH" ] && [ -f "$OPENCLAW_CONFIG_PATH" ]; then
+  OC_CFG="$OPENCLAW_CONFIG_PATH"
+elif [ -f "$OC_CFG_DEFAULT" ]; then
+  OC_CFG="$OC_CFG_DEFAULT"
+elif [ -f "$OC_CFG_ALT" ]; then
+  OC_CFG="$OC_CFG_ALT"
+else
+  OC_CFG="$OC_CFG_DEFAULT"
+fi
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 
@@ -53,10 +63,11 @@ check_deps() {
   log "OpenClaw Skills: OK"
 
   if [ ! -f "$OC_CFG" ]; then
-    error "未找到 openclaw.json。请先运行 openclaw 完成初始化。"
+    error "未找到 OpenClaw 配置文件。请先运行 openclaw 完成初始化。"
+    error "已检查: ${OPENCLAW_CONFIG_PATH:-<unset>}, $OC_CFG_DEFAULT, $OC_CFG_ALT"
     exit 1
   fi
-  log "openclaw.json: $OC_CFG"
+  log "OpenClaw config: $OC_CFG"
 
   # 检查 OpenClaw Gateway 状态
   info "检查 OpenClaw Gateway..."
@@ -159,7 +170,11 @@ register_agents() {
   python3 << 'PYEOF'
 import json, pathlib, sys
 
-cfg_path = pathlib.Path.home() / '.openclaw' / 'openclaw.json'
+cfg_path = pathlib.Path(os.environ.get('OPENCLAW_CONFIG_PATH', '')).expanduser() if os.environ.get('OPENCLAW_CONFIG_PATH') else None
+if not cfg_path or not cfg_path.exists():
+    default_path = pathlib.Path.home() / '.openclaw' / 'openclaw.json'
+    alt_path = pathlib.Path.home() / '.openclaw' / 'config.json'
+    cfg_path = default_path if default_path.exists() else alt_path
 cfg = json.loads(cfg_path.read_text())
 
 AGENTS = [
@@ -456,8 +471,8 @@ echo -e "${GREEN}╚════════════════════
 echo ""
 echo "下一步："
 echo "  1. 配置 API Key（如尚未配置）:"
-echo "     openclaw agents add taizi     # 按提示输入 Anthropic API Key"
-echo "     ./install.sh                  # 重新运行以同步到所有 Agent"
+echo "     优先使用你当前版本 OpenClaw 支持的登录/模型配置方式"
+echo "     例如先执行: openclaw status 或 openclaw help 确认当前命令面"
 echo "  2. 启动数据刷新循环:  bash scripts/run_loop.sh &"
 echo "  3. 启动看板服务器:    python3 \"\$REPO_DIR/dashboard/server.py\""
 echo "  4. 打开看板:          http://127.0.0.1:7891"

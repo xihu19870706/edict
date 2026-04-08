@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-同步 openclaw.json 中的 agent 配置 → data/agent_config.json
+同步 OpenClaw 配置中的 agent 配置 → data/agent_config.json
 支持自动发现 agent workspace 下的 Skills 目录
 """
 import json, os, pathlib, datetime, logging
@@ -12,9 +12,10 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(name)s] %(message
 # Auto-detect project root (parent of scripts/)
 BASE = pathlib.Path(__file__).parent.parent
 DATA = BASE / 'data'
-OPENCLAW_CFG = pathlib.Path.home() / '.openclaw' / 'openclaw.json'
 
-from scripts.runtime_adapter import get_runtime_capabilities  # noqa: E402
+from scripts.runtime_adapter import get_runtime_capabilities, discover_openclaw_config_path  # noqa: E402
+
+OPENCLAW_CFG = discover_openclaw_config_path()
 
 
 ID_LABEL = {
@@ -118,10 +119,24 @@ def _collect_openclaw_models(cfg):
 
 def main():
     cfg = {}
+    if not OPENCLAW_CFG or not OPENCLAW_CFG.exists():
+        log.warning('未找到 OpenClaw 配置文件，已检查 OPENCLAW_CONFIG_PATH / ~/.openclaw/openclaw.json / ~/.openclaw/config.json')
+        DATA.mkdir(exist_ok=True)
+        payload = {
+            'generatedAt': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'defaultModel': 'unknown',
+            'knownModels': KNOWN_MODELS,
+            'dispatchChannel': os.getenv('DEFAULT_DISPATCH_CHANNEL', ''),
+            'agents': [],
+            'source': None,
+        }
+        atomic_json_write(DATA / 'agent_config.json', payload)
+        return
     try:
+        log.info(f'使用 OpenClaw 配置: {OPENCLAW_CFG}')
         cfg = json.loads(OPENCLAW_CFG.read_text(encoding='utf-8'))
     except Exception as e:
-        log.warning(f'cannot read openclaw.json: {e}')
+        log.warning(f'cannot read OpenClaw config {OPENCLAW_CFG}: {e}')
         return
 
     agents_cfg = cfg.get('agents', {})
@@ -193,6 +208,7 @@ def main():
         'knownModels': merged_models,
         'dispatchChannel': existing_cfg.get('dispatchChannel') or os.getenv('DEFAULT_DISPATCH_CHANNEL', ''),
         'agents': result,
+        'source': str(OPENCLAW_CFG) if OPENCLAW_CFG else None,
     }
     DATA.mkdir(exist_ok=True)
     atomic_json_write(DATA / 'agent_config.json', payload)
