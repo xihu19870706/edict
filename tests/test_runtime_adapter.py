@@ -12,6 +12,7 @@ def _load_runtime_adapter():
     script_path = root / "scripts" / "runtime_adapter.py"
     spec = importlib.util.spec_from_file_location("runtime_adapter", script_path)
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
