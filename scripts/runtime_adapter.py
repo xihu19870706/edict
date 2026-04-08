@@ -61,12 +61,9 @@ def discover_openclaw_config_path() -> pathlib.Path | None:
 
 
 def _cli_supports_agent_subcommand(bin_path: str) -> bool:
-    rc, out = _run([bin_path, "help"], timeout=10)
+    rc, out = _run([bin_path, "agent", "--help"], timeout=30)
     text = out.lower()
-    if rc == 0 and ("\n  agent\n" in text or " agent " in text or "agent" in text):
-        return True
-    rc, out = _run([bin_path, "agent", "--help"], timeout=10)
-    return rc == 0 and "usage" in out.lower()
+    return rc == 0 and "--message" in text and "--agent" in text
 
 
 def get_runtime_capabilities() -> RuntimeCapabilities:
@@ -132,9 +129,21 @@ def _build_agent_command(
     timeout_sec: int,
     deliver: bool,
 ) -> list[str]:
-    cmd = [bin_path, "agent", "--agent", agent_id, "-m", prompt, "--timeout", str(timeout_sec)]
+    cmd = [
+        bin_path,
+        "agent",
+        "--agent",
+        agent_id,
+        "--message",
+        prompt,
+        "--timeout",
+        str(timeout_sec),
+        "--json",
+    ]
     if deliver:
         cmd.append("--deliver")
+    else:
+        cmd.append("--local")
     return cmd
 
 
