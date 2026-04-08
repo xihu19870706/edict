@@ -168,7 +168,7 @@ register_agents() {
   log "已备份配置: $OC_CFG.bak.*"
 
   python3 << 'PYEOF'
-import json, pathlib, sys
+import json, pathlib, sys, os
 
 cfg_path = pathlib.Path(os.environ.get('OPENCLAW_CONFIG_PATH', '')).expanduser() if os.environ.get('OPENCLAW_CONFIG_PATH') else None
 if not cfg_path or not cfg_path.exists():
@@ -433,9 +433,9 @@ first_sync() {
   info "执行首次数据同步..."
   cd "$REPO_DIR"
   
-  REPO_DIR="$REPO_DIR" python3 scripts/sync_agent_config.py || warn "sync_agent_config 有警告"
-  python3 scripts/sync_officials_stats.py || warn "sync_officials_stats 有警告"
-  python3 scripts/refresh_live_data.py || warn "refresh_live_data 有警告"
+  REPO_DIR="$REPO_DIR" PYTHONPATH="$REPO_DIR" python3 scripts/sync_agent_config.py || warn "sync_agent_config 有警告"
+  PYTHONPATH="$REPO_DIR" python3 scripts/sync_officials_stats.py || warn "sync_officials_stats 有警告"
+  PYTHONPATH="$REPO_DIR" python3 scripts/refresh_live_data.py || warn "refresh_live_data 有警告"
   
   log "首次同步完成"
 }

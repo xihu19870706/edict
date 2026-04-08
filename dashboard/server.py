@@ -12,7 +12,7 @@ Endpoints:
   GET  /api/last-result        → data/last_model_change_result.json
 """
 import json, pathlib, subprocess, sys, threading, argparse, datetime, logging, re, os, socket
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
@@ -78,10 +78,12 @@ _MIME_TYPES = {
 
 
 def _check_openclaw_gateway_startup():
-    try:
-        ensure_openclaw_ready()
-    except Exception as e:
-        log.warning('OpenClaw gateway unavailable at startup: %s', e)
+    def _probe():
+        try:
+            ensure_openclaw_ready()
+        except Exception as e:
+            log.warning('OpenClaw gateway unavailable at startup: %s', e)
+    threading.Thread(target=_probe, daemon=True).start()
 
 
 def cors_headers(h):
@@ -2772,7 +2774,7 @@ def main():
         f'http://127.0.0.1:{args.port}', f'http://localhost:{args.port}',
     }
 
-    server = HTTPServer((args.host, args.port), Handler)
+    server = ThreadingHTTPServer((args.host, args.port), Handler)
     log.info(f'三省六部看板启动 → http://{args.host}:{args.port}')
     print(f'   按 Ctrl+C 停止')
 
