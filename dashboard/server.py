@@ -947,7 +947,7 @@ def wake_agent(agent_id, message=''):
             log.info(f'🔔 唤醒 {agent_id}...')
             # 带重试（最多2次）
             for attempt in range(1, 3):
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=130)
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=620)
                 if result.returncode == 0:
                     log.info(f'✅ {agent_id} 已唤醒')
                     return
@@ -1003,8 +1003,8 @@ def _ensure_scheduler(task):
         sched = {}
         task['_scheduler'] = sched
     sched.setdefault('enabled', True)
-    sched.setdefault('stallThresholdSec', 600)
-    sched.setdefault('maxRetry', 2)
+    sched.setdefault('stallThresholdSec', 1800)
+    sched.setdefault('maxRetry', 5)
     sched.setdefault('retryCount', 0)
     sched.setdefault('escalationLevel', 0)
     sched.setdefault('autoRollback', True)
