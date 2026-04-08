@@ -441,12 +441,49 @@ def cmd_flow(task_id, from_dept, to_dept, remark):
 
 
 def cmd_done(task_id, output_path='', summary=''):
-    """标记任务完成（原子操作）"""
+    """标记任务完成（原子操作）。六部 agent 调用时推进至 Review，等待尚书省汇总。"""
     def modifier(tasks):
         t = find_task(tasks, task_id)
         if not t:
             log.error(f'任务 {task_id} 不存在')
             return tasks
+
+        # 六部 agent 完成时：
+        # - 若当前为 Doing/六部 → 推进到 Review（尚书省汇总）
+        # - 若已在 Review（尚书省审阅中）→ 只记录完成日志，不重复推进为 Done
+        caller = _infer_agent_id_from_runtime(t)
+        liubu_agents = {'gongbu', 'bingbu', 'hubu', 'libu', 'xingbu', 'libu_hr'}
+        is_liubu = caller in liubu_agents
+
+        if is_liubu and t.get('state') == 'Doing' and t.get('org') == '六部':
+            # 第一个六部完成 → 推进到 Review（尚书省汇总）
+            t['state'] = 'Review'
+            t['org'] = '尚书省'
+            t['output'] = output_path
+            t['now'] = f'六部完成，等待尚书省汇总：{summary or "六部执行完毕"}'
+            t.setdefault('flow_log', []).append({
+                "at": now_iso(), "from": "六部",
+                "to": "尚书省", "remark": f"✅ 六部完成（{caller}），等待尚书省汇总"
+            })
+            if output_path:
+                p = pathlib.Path(output_path)
+                if p.exists():
+                    ts = datetime.datetime.fromtimestamp(p.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+                    t['outputMeta'] = {"exists": True, "lastModified": ts}
+            t['updatedAt'] = now_iso()
+            _append_audit(task_id, caller, 'done → Review (六部)', None, output_path, summary)
+            return tasks
+
+        if is_liubu and t.get('state') == 'Review':
+            # 六部重复调用 done → 已在 Review，不重复推进为 Done，只记录
+            t.setdefault('flow_log', []).append({
+                "at": now_iso(), "from": "六部",
+                "to": "尚书省", "remark": f"📝 {caller} 完成报告：{summary or '执行完毕'}"
+            })
+            t['updatedAt'] = now_iso()
+            _append_audit(task_id, caller, 'done (六部, already Review)', None, output_path, summary)
+            return tasks
+
         t['state'] = 'Done'
         t['output'] = output_path
         t['now'] = summary or '任务已完成'
