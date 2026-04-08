@@ -356,9 +356,13 @@ def add_remote_skill(agent_id, skill_name, source_url, description=''):
         
         elif source_url.startswith('file://'):
             # file:// URL 格式
-            local_path = pathlib.Path(source_url[7:])
+            local_path = pathlib.Path(source_url[7:]).resolve()
             if not local_path.exists():
                 return {'ok': False, 'error': f'本地文件不存在: {local_path}'}
+            # 路径遍历防护：与本地路径分支一致，确保在允许范围内
+            allowed_roots = (OCLAW_HOME.resolve(), BASE.parent.resolve())
+            if not any(str(local_path).startswith(str(root)) for root in allowed_roots):
+                return {'ok': False, 'error': '路径不在允许的目录范围内'}
             content = local_path.read_text()
         
         elif source_url.startswith('/') or source_url.startswith('.'):
@@ -1045,6 +1049,7 @@ def _scheduler_mark_progress(task, note=''):
     sched['stallSince'] = None
     sched['retryCount'] = 0
     sched['escalationLevel'] = 0
+    sched['rollbackCount'] = 0
     sched['lastEscalatedAt'] = None
     if note:
         _scheduler_add_flow(task, f'进展确认：{note}')
@@ -1227,9 +1232,21 @@ def handle_scheduler_scan(threshold_sec=600):
             continue
 
         if sched.get('autoRollback', True):
+            rollback_count = int(sched.get('rollbackCount') or 0)
+            max_rollback = int(sched.get('maxRollback') or 3)
             snapshot = sched.get('snapshot') or {}
             snap_state = snapshot.get('state')
-            if snap_state and snap_state != state:
+            if rollback_count >= max_rollback:
+                # 已达最大回滚次数，标记 Blocked 避免无限循环
+                if state != 'Blocked':
+                    task['state'] = 'Blocked'
+                    task['now'] = f'🚫 连续回滚{rollback_count}次仍无法推进，已自动挂起'
+                    task['block'] = f'连续停滞且回滚{rollback_count}次均失败，需人工介入'
+                    sched['stallSince'] = None
+                    _scheduler_add_flow(task, f'连续回滚{rollback_count}次，自动挂起等待人工介入')
+                    actions.append({'taskId': task_id, 'action': 'blocked', 'reason': f'max rollback {rollback_count}'})
+                    changed = True
+            elif snap_state and snap_state != state:
                 old_state = state
                 task['state'] = snap_state
                 task['org'] = snapshot.get('org', task.get('org', ''))
@@ -1237,9 +1254,10 @@ def handle_scheduler_scan(threshold_sec=600):
                 task['block'] = '无'
                 sched['retryCount'] = 0
                 sched['escalationLevel'] = 0
+                sched['rollbackCount'] = rollback_count + 1
                 sched['stallSince'] = None
                 sched['lastProgressAt'] = now_iso()
-                _scheduler_add_flow(task, f'连续停滞，自动回滚：{old_state} → {snap_state}')
+                _scheduler_add_flow(task, f'连续停滞，自动回滚：{old_state} → {snap_state}（第{rollback_count + 1}次）')
                 pending_rollbacks.append((task_id, snap_state))
                 actions.append({'taskId': task_id, 'action': 'rollback', 'toState': snap_state})
                 changed = True
@@ -2051,8 +2069,17 @@ def dispatch_for_state(task_id, task, new_state, trigger='state-transition'):
 
     def _do_dispatch():
         try:
-            if not _check_gateway_alive():
-                log.warning(f'⚠️ {task_id} 自动派发跳过: Gateway 未启动')
+            # Gateway 可能暂时不可达（休眠恢复、进程重启），等待后重试
+            import time as _time
+            _gw_alive = False
+            for _gw_attempt in range(3):
+                if _check_gateway_alive():
+                    _gw_alive = True
+                    break
+                if _gw_attempt < 2:
+                    _time.sleep(5 * (_gw_attempt + 1))  # 5s, 10s
+            if not _gw_alive:
+                log.warning(f'⚠️ {task_id} 自动派发跳过: Gateway 未启动（重试3次仍不可达）')
                 _update_task_scheduler(task_id, lambda t, s: s.update({
                     'lastDispatchAt': now_iso(),
                     'lastDispatchStatus': 'gateway-offline',
@@ -2760,6 +2787,21 @@ def main():
 
     # 启动恢复：重新派发上次被 kill 中断的 queued 任务
     threading.Timer(3.0, _startup_recover_queued_dispatches).start()
+
+    # 定时巡检：每 120 秒自动扫描停滞任务并触发重试/升级/回滚
+    def _periodic_scheduler_scan():
+        while True:
+            try:
+                import time as _time
+                _time.sleep(120)
+                result = handle_scheduler_scan(threshold_sec=180)
+                count = result.get('count', 0) if isinstance(result, dict) else 0
+                if count > 0:
+                    log.info(f'🔍 定时巡检：{count} 个动作')
+            except Exception as e:
+                log.warning(f'定时巡检异常: {e}')
+    threading.Thread(target=_periodic_scheduler_scan, daemon=True).start()
+    log.info('🔍 定时巡检已启动（每120秒）')
 
     try:
         server.serve_forever()

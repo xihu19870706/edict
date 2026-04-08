@@ -32,6 +32,12 @@ node_modules/
 edict/frontend/node_modules/
 *.tsbuildinfo
 
+# Vite cache
+.vite/
+
+# IDE
+.vscode/
+
 # Backups
 *.bak*
 data
