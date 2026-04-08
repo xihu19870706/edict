@@ -2009,6 +2009,107 @@ _STATE_LABELS = {
 
 def dispatch_for_state(task_id, task, new_state, trigger='state-transition'):
     """推进/审批后自动派发对应 Agent（后台异步，不阻塞响应）。"""
+    title = task.get('title', '(无标题)')
+    target_dept = task.get('targetDept', '')
+
+    def _read_agent_soul(agent_id):
+        ws = pathlib.Path(f'/home/edict/.openclaw/workspace-{agent_id}')
+        soul = ws / 'SOUL.md'
+        if soul.exists():
+            try:
+                return soul.read_text(encoding='utf-8')
+            except Exception:
+                return ''
+        return ''
+
+    def _infer_liubu_agents(task):
+        """依据尚书省 SOUL/任务信息，推断需要派发的六部 Agent。"""
+        mapping = {
+            '工部': 'gongbu', '兵部': 'bingbu', '户部': 'hubu',
+            '礼部': 'libu', '刑部': 'xingbu', '吏部': 'libu_hr',
+        }
+        # 显式指定优先
+        raw = (task.get('targetDept') or '').strip()
+        picks = []
+        if raw:
+            for dept, aid in mapping.items():
+                if dept in raw and aid not in picks:
+                    picks.append(aid)
+        # 尚书省 SOUL 中有“调研/最新功能/OpenClaw”场景时，默认走工部+兵部+户部+礼部+刑部
+        title_text = f"{task.get('title','')}\n{task.get('now','')}\n{task.get('summary','')}"
+        if not picks and any(k in title_text for k in ['调研', '最新功能', 'OpenClaw', '功能']):
+            picks = ['gongbu', 'bingbu', 'hubu', 'libu', 'xingbu']
+        if not picks:
+            picks = ['gongbu']
+        return picks
+
+    # 特殊：Doing + 六部 时，不再派给单一 Agent，而是按尚书省规则扇出给多个六部 Agent
+    if new_state == 'Doing' and task.get('org') == '六部':
+        liubu_agents = _infer_liubu_agents(task)
+        _update_task_scheduler(task_id, lambda t, s: (
+            s.update({
+                'lastDispatchAt': now_iso(),
+                'lastDispatchStatus': 'queued',
+                'lastDispatchAgent': ','.join(liubu_agents),
+                'lastDispatchTrigger': trigger,
+            }),
+            _scheduler_add_flow(t, f'已入队派发：Doing → 六部（{",".join(liubu_agents)}，{trigger}）', to='六部')
+        ))
+
+        shangshu_soul = _read_agent_soul('shangshu')
+        msg_map = {
+            'gongbu': '负责开发、架构、代码与技术实现评估。',
+            'bingbu': '负责基础设施、部署、运行环境与安全评估。',
+            'hubu': '负责数据、指标、成本与资源投入分析。',
+            'libu': '负责文档、UI、对外表达与成果整理。',
+            'xingbu': '负责测试、审查、风险与合规检查。',
+            'libu_hr': '负责人力、Agent 配置、协作流程与培训建议。',
+        }
+
+        def _do_fanout():
+            for aid in liubu_agents:
+                try:
+                    if not _check_gateway_alive():
+                        log.warning(f'⚠️ {task_id} 六部派发跳过: Gateway 不可达 ({aid})')
+                        continue
+                    _agent_cfg = read_json(DATA / 'agent_config.json', {})
+                    _channel = (_agent_cfg.get('dispatchChannel') or '').strip()
+                    submsg = (
+                        f'📮 尚书省·任务令\n'
+                        f'任务ID: {task_id}\n'
+                        f'任务: {title}\n'
+                        f'你的职责: {msg_map.get(aid, "请按本部职责执行")}\n'
+                        f'输出要求: 用 kanban_update.py progress/todo 上报，并形成可汇总结果。\n\n'
+                        f'【尚书省 SOUL 节选】\n{shangshu_soul[:1200]}\n\n'
+                        f'⚠️ 看板已有此任务，请勿重复创建；直接更新已有任务。'
+                    )
+                    cmd = ['openclaw', 'agent', '--agent', aid, '-m', submsg, '--timeout', '300']
+                    if _channel:
+                        cmd.extend(['--deliver', '--channel', _channel])
+                    log.info(f'🔄 六部派发 {task_id} → {aid} ...')
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=310)
+                    if result.returncode == 0:
+                        log.info(f'✅ 六部派发成功 {task_id} → {aid}')
+                    else:
+                        err = result.stderr[:200] if result.stderr else result.stdout[:200]
+                        log.warning(f'⚠️ 六部派发失败 {task_id} → {aid}: {err}')
+                except Exception as e:
+                    log.warning(f'⚠️ 六部派发异常 {task_id} → {aid}: {e}')
+            _update_task_scheduler(task_id, lambda t, s: (
+                s.update({
+                    'lastDispatchAt': now_iso(),
+                    'lastDispatchStatus': 'success',
+                    'lastDispatchAgent': ','.join(liubu_agents),
+                    'lastDispatchTrigger': trigger,
+                    'lastDispatchError': '',
+                }),
+                _scheduler_add_flow(t, f'派发成功：六部（{",".join(liubu_agents)}，{trigger}）', to='六部')
+            ))
+
+        threading.Thread(target=_do_fanout, daemon=True).start()
+        log.info(f'🚀 {task_id} 推进后自动派发 → 六部 {liubu_agents}')
+        return
+
     agent_id = _STATE_AGENT_MAP.get(new_state)
     if agent_id is None and new_state in ('Doing', 'Next'):
         org = task.get('org', '')
