@@ -2174,6 +2174,9 @@ def handle_advance_state(task_id, comment=''):
     remark = comment or default_remark
 
     task['state'] = next_state
+    # 同步更新当前归属部门，避免状态已推进但 org 仍停留在旧部门
+    # 例如 Assigned -> Doing 时，org 应更新为“六部”而不是继续保留“尚书省/中书省”
+    task['org'] = to_dept
     task['now'] = f'⬇️ 手动推进：{remark}'
     task.setdefault('flow_log', []).append({
         'at': now_iso(),
