@@ -2472,18 +2472,54 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json({'ok': False, 'error': 'task not found'}, 404)
                 else:
                     output_path = task.get('output', '')
-                    if not output_path or output_path == '-':
-                        self.send_json({'ok': True, 'taskId': task_id, 'content': '', 'exists': False})
-                    else:
+                    # 优先级1：output 是有效文件路径
+                    if output_path and output_path != '-' and output_path != '无':
                         p_out = pathlib.Path(output_path)
-                        if not p_out.exists():
-                            self.send_json({'ok': True, 'taskId': task_id, 'content': '', 'exists': False})
-                        else:
+                        if p_out.exists():
                             try:
                                 content = p_out.read_text(encoding='utf-8', errors='replace')[:50000]
-                                self.send_json({'ok': True, 'taskId': task_id, 'content': content, 'exists': True})
+                                self.send_json({'ok': True, 'taskId': task_id, 'content': content, 'exists': True, 'source': 'file'})
                             except Exception as e:
                                 self.send_json({'ok': False, 'error': f'读取失败: {e}'}, 500)
+                            return
+
+                    # 优先级2：尝试从 progress_log 提取实质性汇报内容
+                    progress_log = task.get('progress_log') or []
+                    meaningful_entries = []
+                    # 严格跳过真正的噪音：心跳、推理中间结果、空文本
+                    skip_prefix = ('NO_REPLY', 'Reasoning:')
+                    for entry in progress_log:
+                        text = entry.get('text', '').strip()
+                        if not text:
+                            continue
+                        # 跳过纯心跳噪音
+                        if '心跳' in text and len(text) < 50:
+                            continue
+                        # 跳过推理中间结果
+                        if text.startswith(skip_prefix):
+                            continue
+                        # 跳过纯状态通知（无实质内容）
+                        if len(text) < 10:
+                            continue
+                        agent = entry.get('agentLabel') or entry.get('agent', '')
+                        agent_tag = f"[{agent}] " if agent else ""
+                        meaningful_entries.append(f"**{agent_tag}{text}**")
+
+                    if meaningful_entries:
+                        content = ("# 任务产出报告\n\n" +
+                                   "\n\n---\n\n".join(meaningful_entries))[:50000]
+                        self.send_json({'ok': True, 'taskId': task_id, 'content': content,
+                                        'exists': True, 'source': 'progress_log'})
+                        return
+
+                    # 优先级3：output 有纯文本
+                    if output_path and output_path not in ('-', '无', ''):
+                        self.send_json({'ok': True, 'taskId': task_id,
+                                        'content': output_path, 'exists': True, 'source': 'output_text'})
+                        return
+
+                    # 什么也没有
+                    self.send_json({'ok': True, 'taskId': task_id, 'content': '', 'exists': False})
         elif p.startswith('/api/agent-activity/'):
             agent_id = p.replace('/api/agent-activity/', '')
             if not agent_id or not _SAFE_NAME_RE.match(agent_id):

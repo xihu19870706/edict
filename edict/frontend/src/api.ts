@@ -37,6 +37,8 @@ export const api = {
   // 任务实时动态
   taskActivity: (id: string) =>
     fetchJ<TaskActivityData>(`${API_BASE}/api/task-activity/${encodeURIComponent(id)}`),
+  taskOutput: (id: string) =>
+    fetchJ<TaskOutputData>(`${API_BASE}/api/task-output/${encodeURIComponent(id)}`),
   schedulerState: (id: string) =>
     fetchJ<SchedulerStateData>(`${API_BASE}/api/scheduler-state/${encodeURIComponent(id)}`),
 
@@ -365,6 +367,15 @@ export interface SchedulerStateData {
   error?: string;
   scheduler?: SchedulerInfo;
   stalledSec?: number;
+}
+
+export interface TaskOutputData {
+  ok: boolean;
+  taskId: string;
+  content?: string;
+  exists: boolean;
+  source?: 'file' | 'progress_log' | 'output_text';
+  error?: string;
 }
 
 export interface SkillContentResult {

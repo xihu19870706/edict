@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { useStore, isEdict, STATE_LABEL } from '../store';
-import type { Task, FlowEntry } from '../api';
+import { useStore, isEdict, STATE_LABEL, formatBeijingDateTime } from '../store';
+import { api } from '../api';
+import type { Task, FlowEntry, TaskOutputData } from '../api';
 
 export default function MemorialPanel() {
   const liveStatus = useStore((s) => s.liveStatus);
@@ -19,14 +20,14 @@ export default function MemorialPanel() {
     md += `- **状态**: ${t.state}\n`;
     md += `- **负责部门**: ${t.org}\n`;
     if (fl.length) {
-      const startAt = fl[0].at ? fl[0].at.substring(0, 19).replace('T', ' ') : '未知';
-      const endAt = fl[fl.length - 1].at ? fl[fl.length - 1].at.substring(0, 19).replace('T', ' ') : '未知';
+      const startAt = fl[0].at ? formatBeijingDateTime(fl[0].at).slice(0, 16) : '未知';
+      const endAt = fl[fl.length - 1].at ? formatBeijingDateTime(fl[fl.length - 1].at).slice(0, 16) : '未知';
       md += `- **开始时间**: ${startAt}\n`;
       md += `- **完成时间**: ${endAt}\n`;
     }
     md += `\n## 流转记录\n\n`;
     for (const f of fl) {
-      md += `- **${f.from}** → **${f.to}**  \n  ${f.remark}  \n  _${(f.at || '').substring(0, 19)}_\n\n`;
+      md += `- **${f.from}** → **${f.to}**  \n  ${f.remark}  \n  _${formatBeijingDateTime(f.at || '').slice(0, 16)}_\n\n`;
     }
     if (t.output && t.output !== '-') md += `## 产出物\n\n\`${t.output}\`\n`;
     navigator.clipboard.writeText(md).then(
@@ -63,8 +64,8 @@ export default function MemorialPanel() {
           mems.map((t) => {
             const fl = t.flow_log || [];
             const depts = [...new Set(fl.map((f) => f.from).concat(fl.map((f) => f.to)).filter((x) => x && x !== '皇上'))];
-            const firstAt = fl.length ? (fl[0].at || '').substring(0, 16).replace('T', ' ') : '';
-            const lastAt = fl.length ? (fl[fl.length - 1].at || '').substring(0, 16).replace('T', ' ') : '';
+            const firstAt = fl.length ? formatBeijingDateTime(fl[0].at || '').slice(0, 16) : '';
+            const lastAt = fl.length ? formatBeijingDateTime(fl[fl.length - 1].at || '').slice(0, 16) : '';
             const stIcon = t.state === 'Done' ? '✅' : '🚫';
             return (
               <div className="mem-card" key={t.id} onClick={() => setDetailTask(t)}>
@@ -114,6 +115,33 @@ function MemorialDetailModal({
   const stIcon = st === 'Done' ? '✅' : st === 'Cancelled' ? '🚫' : '🔄';
   const depts = [...new Set(fl.map((f) => f.from).concat(fl.map((f) => f.to)).filter((x) => x && x !== '皇上'))];
 
+  const [loadingOutput, setLoadingOutput] = useState(false);
+  const [outputData, setOutputData] = useState<TaskOutputData | null>(null);
+
+  const loadOutput = () => {
+    setLoadingOutput(true);
+    api.taskOutput(t.id).then((d) => {
+      setOutputData(d);
+      setLoadingOutput(false);
+    }).catch(() => {
+      setOutputData({ ok: false, taskId: t.id, exists: false, error: '加载失败' });
+      setLoadingOutput(false);
+    });
+  };
+
+  const downloadReport = () => {
+    if (!outputData?.content) return;
+    const blob = new Blob([outputData.content], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${t.id}-${(t.title || 'report').replace(/\s+/g, '_')}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   // Reconstruct phases
   const originLog: FlowEntry[] = [];
   const planLog: FlowEntry[] = [];
@@ -146,7 +174,7 @@ function MemorialDetailModal({
                   <span className="md-tl-to">→ {f.to}</span>
                 </div>
                 <div className="md-tl-remark">{f.remark}</div>
-                <div className="md-tl-time">{(f.at || '').substring(0, 19).replace('T', ' ')}</div>
+                <div className="md-tl-time">{formatBeijingDateTime(f.at || '').slice(0, 16)}</div>
               </div>
             );
           })}
@@ -187,6 +215,74 @@ function MemorialDetailModal({
             <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line)' }}>
               <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>📦 产出物</div>
               <code style={{ fontSize: 11, wordBreak: 'break-all' }}>{t.output}</code>
+            </div>
+          )}
+
+          {/* 报告内容预览 */}
+          {!outputData && !loadingOutput && st === 'Done' && (
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line)' }}>
+              <button
+                className="btn btn-g"
+                onClick={loadOutput}
+                style={{ fontSize: 12, padding: '6px 16px' }}
+              >
+                📥 查看报告内容
+              </button>
+            </div>
+          )}
+
+          {loadingOutput && (
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line)', fontSize: 12, color: 'var(--muted)' }}>
+              正在加载报告内容…
+            </div>
+          )}
+
+          {outputData && (
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 600 }}>📄 报告内容</div>
+                {outputData.source && (
+                  <span style={{ fontSize: 10, color: 'var(--muted)', background: 'var(--panel2)', padding: '2px 6px', borderRadius: 4 }}>
+                    {outputData.source === 'file' ? '📄 文件来源' :
+                     outputData.source === 'progress_log' ? '📋 流程记录聚合' :
+                     '📝 摘要文本'}
+                  </span>
+                )}
+                <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--muted)' }}>
+                  {outputData.content ? `${outputData.content.length} 字` : ''}
+                </span>
+              </div>
+              {outputData.exists && outputData.content ? (
+                <pre style={{
+                  fontSize: 11, background: 'var(--panel2)', border: '1px solid var(--line)',
+                  borderRadius: 8, padding: '10px 14px', maxHeight: 400, overflowY: 'auto',
+                  whiteSpace: 'pre-wrap', wordBreak: 'break-all', margin: 0,
+                }}>
+                  {outputData.content}
+                </pre>
+              ) : (
+                <div style={{ fontSize: 12, color: 'var(--muted)', padding: '8px 0' }}>
+                  暂无报告内容
+                </div>
+              )}
+              {outputData.exists && outputData.content && (
+                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                  <button
+                    className="btn btn-g"
+                    onClick={downloadReport}
+                    style={{ fontSize: 12, padding: '6px 16px' }}
+                  >
+                    📥 下载报告
+                  </button>
+                  <button
+                    className="btn"
+                    onClick={() => navigator.clipboard.writeText(outputData.content || '').then(() => alert('已复制'))}
+                    style={{ fontSize: 12, padding: '6px 16px' }}
+                  >
+                    📋 复制全文
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
