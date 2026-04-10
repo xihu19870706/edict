@@ -12,6 +12,7 @@ export default function MemorialPanel() {
   const [detailTask, setDetailTask] = useState<Task | null>(null);
   // batch select
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const loadLive = useStore((s) => s.loadLive);
 
   const tasks = liveStatus?.tasks || [];
 
@@ -45,7 +46,7 @@ export default function MemorialPanel() {
       } catch { fail++; }
     }
     setSelected(new Set());
-    if (fail === 0) toast(`✅ ${ok} 道奏折已归档删除`);
+    if (fail === 0) { toast(`✅ ${ok} 道奏折已归档删除`); loadLive(); }
     else toast(`${ok} 成功，${fail} 失败`, 'err');
   };
 
@@ -54,7 +55,7 @@ export default function MemorialPanel() {
     if (!confirm('确认归档删除该奏折？')) return;
     try {
       const r = await api.archiveTask(id, true);
-      if (r.ok) toast('已归档删除', 'ok');
+      if (r.ok) { toast('已归档删除', 'ok'); loadLive(); }
       else toast(r.error || '操作失败', 'err');
     } catch { toast('操作失败', 'err'); }
   };
@@ -153,7 +154,7 @@ export default function MemorialPanel() {
                   title="归档删除"
                   onClick={(e) => handleCardArchive(t.id, e)}
                   style={{
-                    position: 'absolute', top: 10, right: 10,
+                    position: 'absolute', bottom: 10, right: 10,
                     background: 'none', border: 'none', cursor: 'pointer',
                     fontSize: 14, color: 'var(--danger)', opacity: 0.6,
                     padding: '2px 6px', borderRadius: 4,
@@ -213,6 +214,7 @@ export default function MemorialPanel() {
           task={detailTask}
           onClose={() => setDetailTask(null)}
           onExport={exportMemorial}
+          onArchived={() => loadLive()}
         />
       )}
     </div>
@@ -223,10 +225,12 @@ function MemorialDetailModal({
   task: t,
   onClose,
   onExport,
+  onArchived,
 }: {
   task: Task;
   onClose: () => void;
   onExport: (t: Task) => void;
+  onArchived: () => void;
 }) {
   const fl = t.flow_log || [];
   const st = t.state || 'Unknown';
@@ -252,7 +256,7 @@ function MemorialDetailModal({
     if (!confirm(`确认归档删除「${t.title || t.id}」？\n归档后可从奏折阁移除，但仍可在归档视图中恢复。`)) return;
     try {
       const r = await api.archiveTask(t.id, true);
-      if (r.ok) { toast('已归档删除', 'ok'); onClose(); }
+      if (r.ok) { toast('已归档删除', 'ok'); onClose(); onArchived(); }
       else toast(r.error || '操作失败', 'err');
     } catch { toast('操作失败', 'err'); }
   };
