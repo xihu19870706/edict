@@ -327,7 +327,7 @@ body {
 
 /* ══ Memorials ══ */
 .mem-list { display: flex; flex-direction: column; gap: 8px; }
-.mem-card { display: flex; gap: 14px; align-items: flex-start; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; cursor: pointer; transition: border-color .12s; }
+.mem-card { position: relative; display: flex; gap: 14px; align-items: flex-start; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px 14px 36px; cursor: pointer; transition: border-color .12s; }
 .mem-card:hover { border-color: var(--acc); }
 
 /* ══ Templates ══ */

@@ -180,7 +180,7 @@ export default function MemorialPanel() {
                   )}
                 </div>
 
-                <div className="mem-icon" style={{ paddingLeft: 20 }}>📜</div>
+                <div className="mem-icon">📜</div>
                 <div className="mem-info">
                   <div className="mem-title">
                     {stIcon} {t.title || t.id}
