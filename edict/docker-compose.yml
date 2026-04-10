@@ -1,6 +1,6 @@
-# ══════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════
 # Edict 三省六部 — 事件驱动架构 Docker Compose
-# ══════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════
 
 services:
   # ── 基础设施 ──
@@ -60,11 +60,26 @@ services:
     command: >
       sh -c "
         python -m alembic upgrade head &&
-        uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+        uvicorn app.main:app --host 0.0.0.0 --port 8000
       "
     restart: unless-stopped
 
   # ── Worker 进程 ──
+
+  outbox_relay:
+    build:
+      context: ..
+      dockerfile: edict/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://edict:edict_dev_2024@postgres:5432/edict
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: python -m app.workers.outbox_relay
+    restart: unless-stopped
 
   orchestrator:
     build:
@@ -99,6 +114,22 @@ services:
       - ../scripts:/app/scripts
       - ../data:/app/data
     command: python -m app.workers.dispatch_worker
+    restart: unless-stopped
+
+  # ── Dashboard API 代理 (port 7891) ──
+  # 旧前端通过同源访问 port 7891，将写请求代理到 FastAPI backend
+  dashboard:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    ports:
+      - "7891:7891"
+    environment:
+      EDICT_BACKEND_URL: http://backend:8000
+    depends_on:
+      - backend
+    volumes:
+      - ../data:/app/data
     restart: unless-stopped
 
   # ── 前端 ──

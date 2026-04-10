@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     postgres_port: int = 5432
     postgres_db: str = "edict"
     postgres_user: str = "edict"
-    postgres_password: str = "edict_secret_change_me"
+    postgres_password: str = "edict_dev_2024"
     database_url_override: str | None = Field(default=None, alias="DATABASE_URL")
 
     # ── Redis ──

@@ -16,6 +16,8 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+RUN pip install --no-cache-dir pyyaml
+
 # 复制看板核心文件
 COPY dashboard/ ./dashboard/
 COPY scripts/ ./scripts/

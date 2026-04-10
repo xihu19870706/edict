@@ -1,38 +1,39 @@
 # ══════════════════════════════════════════════════════════════
-# 三省六部 · systemd 服务模板
-# 部署说明: 复制到 /etc/systemd/system/edict.service
+# 三省六部 · systemd 服务
+#
+# 部署步骤:
 #   sudo cp edict.service /etc/systemd/system/
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now edict
+#
+# 查看状态/日志:
+#   sudo systemctl status edict
+#   journalctl -u edict -f
 # ══════════════════════════════════════════════════════════════
 [Unit]
-Description=三省六部 Multi-Agent Orchestration Dashboard
-After=network.target
+Description=三省六部 Multi-Agent Orchestration Platform
+Wants=network-online.target redis.service postgresql.service
+After=network-online.target redis.service postgresql.service
 
 [Service]
-Type=forking
+Type=simple
 User=edict
-Group=edict
 WorkingDirectory=/opt/edict
-ExecStart=/opt/edict/edict.sh start
-ExecStop=/opt/edict/edict.sh stop
-ExecReload=/opt/edict/edict.sh restart
-
-# PID 跟踪
-PIDFile=/opt/edict/.pids/server.pid
-
-# 自动重启
+ExecStart=/opt/edict/edict.sh run
 Restart=on-failure
 RestartSec=5
+KillMode=control-group
 
-# 环境变量（按需修改）
 Environment=EDICT_DASHBOARD_HOST=0.0.0.0
 Environment=EDICT_DASHBOARD_PORT=7891
+Environment=EDICT_BACKEND_PORT=8000
+Environment=PYTHONPATH=/opt/edict
+Environment=PATH=/home/edict/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
 
-# 安全加固
 NoNewPrivileges=true
 ProtectSystem=strict
 ReadWritePaths=/opt/edict/data /opt/edict/logs /opt/edict/.pids
+PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target

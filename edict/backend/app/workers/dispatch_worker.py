@@ -20,13 +20,21 @@ import pathlib
 import re
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
 from datetime import datetime, timezone
 
 from ..config import get_settings
-from scripts.runtime_adapter import dispatch_agent
+
+try:
+    from scripts.runtime_adapter import dispatch_agent
+except ModuleNotFoundError:
+    _REPO_ROOT = pathlib.Path(__file__).resolve().parents[4]
+    if str(_REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(_REPO_ROOT))
+    from scripts.runtime_adapter import dispatch_agent
 from ..services.event_bus import (
     EventBus,
     TOPIC_TASK_DISPATCH,

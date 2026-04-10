@@ -1,0 +1,1 @@
+/opt/edict/scripts/sync-upstream.sh

@@ -21,9 +21,11 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
 
+from sqlalchemy import select
+
 from ..config import get_settings
 from ..db import async_session
-from ..models.task import TaskState, STATE_AGENT_MAP, ORG_AGENT_MAP
+from ..models.task import Task, TaskState, STATE_AGENT_MAP, ORG_AGENT_MAP, TERMINAL_STATES
 from ..services.event_bus import (
     EventBus,
     TOPIC_TASK_CREATED,
@@ -89,6 +91,9 @@ class OrchestratorWorker:
         # 先处理崩溃遗留的 pending 事件
         await self._recover_pending()
 
+        # 启动恢复：重新派发上次被 kill 中断的 queued 任务
+        await self._recover_queued_dispatches()
+
         # 启动停滞检测后台任务
         self._stall_checker_task = asyncio.create_task(self._stall_check_loop())
 
@@ -116,6 +121,69 @@ class OrchestratorWorker:
                 log.info(f"Recovering {len(events)} stale events from {topic}")
                 for entry_id, event in events:
                     await self._handle_event(topic, entry_id, event)
+
+    async def _recover_queued_dispatches(self):
+        """服务启动后扫描 lastDispatchStatus=queued 的任务，重新派发。
+
+        解决：kill -9 重启导致派发线程中断、任务永久卡住的问题。
+        对应旧 dashboard 的 _startup_recover_queued_dispatches()。
+        """
+        async with async_session() as session:
+            stmt = select(Task).where(
+                Task.archived == False,  # noqa: E712
+            )
+            result = await session.execute(stmt)
+            all_tasks = result.scalars().all()
+
+        recovered = 0
+        for task in all_tasks:
+            state = task.state.value if isinstance(task.state, TaskState) else str(task.state)
+            if state in {s.value for s in TERMINAL_STATES}:
+                continue
+            scheduler = dict(task.scheduler or {})
+            if scheduler.get("lastDispatchStatus") != "queued":
+                continue
+
+            task_id = str(task.task_id)
+            log.info(f"🔄 启动恢复: {task_id} 状态={state} 上次派发未完成，重新派发")
+            scheduler["lastDispatchTrigger"] = "startup-recovery"
+            task.scheduler = scheduler
+
+            # 确定派发目标 agent
+            agent = STATE_AGENT_MAP.get(TaskState(state))
+            if agent is None and state in ("Doing", "Next"):
+                agent = ORG_AGENT_MAP.get(task.org or "")
+            if agent is None:
+                agent = "shangshu"
+
+            trace_id = task.trace_id or str(uuid.uuid4())
+            await self.bus.publish(
+                topic=TOPIC_TASK_DISPATCH,
+                trace_id=trace_id,
+                event_type="task.dispatch.startup-recovery",
+                producer="orchestrator.startup",
+                payload={
+                    "task_id": task_id,
+                    "agent": agent,
+                    "state": state,
+                    "message": f"启动恢复：重新派发任务 (trigger=startup-recovery)",
+                    "title": task.title,
+                    "org": task.org or "",
+                    "priority": task.priority or "中",
+                    "tags": task.tags or [],
+                    "todos": task.todos or [],
+                    "flow_log": task.flow_log or [],
+                    "progress_log": task.progress_log or [],
+                    "block": task.block or "",
+                    "meta": task.meta or {},
+                },
+            )
+            recovered += 1
+
+        if recovered:
+            log.info(f"✅ 启动恢复完成: 重新派发 {recovered} 个任务")
+        else:
+            log.info("✅ 启动恢复: 无需恢复")
 
     async def _poll_cycle(self):
         """一次轮询周期：多 topic 同时消费，按 task_id 分组并行处理。"""
@@ -349,8 +417,6 @@ class OrchestratorWorker:
         async with async_session() as session:
             svc = TaskService(session)
             # 查找超时任务：state in (Doing, Next) 且 updated_at < threshold
-            from sqlalchemy import select
-            from ..models.task import Task
             stmt = select(Task).where(
                 Task.state.in_([TaskState.Doing, TaskState.Next]),
                 Task.updated_at < threshold,

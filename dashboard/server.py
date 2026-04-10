@@ -51,6 +51,18 @@ _DEFAULT_ORIGINS = {
     'http://127.0.0.1:5173', 'http://localhost:5173',  # Vite dev server
 }
 _SAFE_NAME_RE = re.compile(r'^[a-zA-Z0-9_\-\u4e00-\u9fff]+$')
+_BACKEND_URL = os.environ.get("EDICT_BACKEND_URL", "http://127.0.0.1:8000")
+
+def _proxy_to_backend(path: str, body: dict | None = None) -> dict:
+    """将 API 请求代理到 FastAPI backend (port 8000)。"""
+    url = f"{_BACKEND_URL}{path}"
+    data = json.dumps(body or {}).encode("utf-8") if body else b"{}"
+    req = Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read())
+    except Exception as e:
+        return {"ok": False, "error": f"Backend error: {e}"}
 
 BASE = pathlib.Path(__file__).parent
 DIST = BASE / 'dist'          # React 构建产物 (npm run build)
@@ -2587,11 +2599,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if p == '/api/scheduler-scan':
             threshold_sec = body.get('thresholdSec', 180)
-            try:
-                result = handle_scheduler_scan(threshold_sec)
-                self.send_json(result)
-            except Exception as e:
-                self.send_json({'ok': False, 'error': f'scheduler scan failed: {e}'}, 500)
+            self.send_json(_proxy_to_backend('/api/scheduler-scan', {'thresholdSec': threshold_sec}))
             return
 
         if p == '/api/repair-flow-order':
@@ -2607,7 +2615,7 @@ class Handler(BaseHTTPRequestHandler):
             if not task_id:
                 self.send_json({'ok': False, 'error': 'taskId required'}, 400)
                 return
-            self.send_json(handle_scheduler_retry(task_id, reason))
+            self.send_json(_proxy_to_backend('/api/scheduler-retry', {'taskId': task_id, 'reason': reason}))
             return
 
         if p == '/api/scheduler-escalate':
@@ -2616,7 +2624,7 @@ class Handler(BaseHTTPRequestHandler):
             if not task_id:
                 self.send_json({'ok': False, 'error': 'taskId required'}, 400)
                 return
-            self.send_json(handle_scheduler_escalate(task_id, reason))
+            self.send_json(_proxy_to_backend('/api/scheduler-escalate', {'taskId': task_id, 'reason': reason}))
             return
 
         if p == '/api/scheduler-rollback':
@@ -2625,7 +2633,7 @@ class Handler(BaseHTTPRequestHandler):
             if not task_id:
                 self.send_json({'ok': False, 'error': 'taskId required'}, 400)
                 return
-            self.send_json(handle_scheduler_rollback(task_id, reason))
+            self.send_json(_proxy_to_backend('/api/scheduler-rollback', {'taskId': task_id, 'reason': reason}))
             return
 
         if p == '/api/morning-brief/refresh':
@@ -2651,8 +2659,9 @@ class Handler(BaseHTTPRequestHandler):
             if not agent_id or not skill_name:
                 self.send_json({'ok': False, 'error': 'agentId and skillName required'}, 400)
                 return
-            result = add_skill_to_agent(agent_id, skill_name, desc, trigger)
-            self.send_json(result)
+            self.send_json(_proxy_to_backend('/api/add-skill', {
+                'agentId': agent_id, 'skillName': skill_name, 'description': desc, 'trigger': trigger,
+            }))
             return
 
         if p == '/api/add-remote-skill':
@@ -2663,13 +2672,13 @@ class Handler(BaseHTTPRequestHandler):
             if not agent_id or not skill_name or not source_url:
                 self.send_json({'ok': False, 'error': 'agentId, skillName, and sourceUrl required'}, 400)
                 return
-            result = add_remote_skill(agent_id, skill_name, source_url, description)
-            self.send_json(result)
+            self.send_json(_proxy_to_backend('/api/add-remote-skill', {
+                'agentId': agent_id, 'skillName': skill_name, 'sourceUrl': source_url, 'description': description,
+            }))
             return
 
         if p == '/api/remote-skills-list':
-            result = get_remote_skills_list()
-            self.send_json(result)
+            self.send_json(_proxy_to_backend('/api/remote-skills'))
             return
 
         if p == '/api/update-remote-skill':
@@ -2678,8 +2687,7 @@ class Handler(BaseHTTPRequestHandler):
             if not agent_id or not skill_name:
                 self.send_json({'ok': False, 'error': 'agentId and skillName required'}, 400)
                 return
-            result = update_remote_skill(agent_id, skill_name)
-            self.send_json(result)
+            self.send_json(_proxy_to_backend('/api/update-remote-skill', {'agentId': agent_id, 'skillName': skill_name}))
             return
 
         if p == '/api/remove-remote-skill':
@@ -2688,8 +2696,7 @@ class Handler(BaseHTTPRequestHandler):
             if not agent_id or not skill_name:
                 self.send_json({'ok': False, 'error': 'agentId and skillName required'}, 400)
                 return
-            result = remove_remote_skill(agent_id, skill_name)
-            self.send_json(result)
+            self.send_json(_proxy_to_backend('/api/remove-remote-skill', {'agentId': agent_id, 'skillName': skill_name}))
             return
 
         if p == '/api/task-action':
@@ -2699,8 +2706,7 @@ class Handler(BaseHTTPRequestHandler):
             if not task_id or action not in ('stop', 'cancel', 'resume'):
                 self.send_json({'ok': False, 'error': 'taskId and action(stop/cancel/resume) required'}, 400)
                 return
-            result = handle_task_action(task_id, action, reason)
-            self.send_json(result)
+            self.send_json(_proxy_to_backend('/api/task-action', {'taskId': task_id, 'action': action, 'reason': reason}))
             return
 
         if p == '/api/archive-task':
@@ -2710,8 +2716,7 @@ class Handler(BaseHTTPRequestHandler):
             if not task_id and not archive_all:
                 self.send_json({'ok': False, 'error': 'taskId or archiveAllDone required'}, 400)
                 return
-            result = handle_archive_task(task_id, archived, archive_all)
-            self.send_json(result)
+            self.send_json(_proxy_to_backend('/api/archive-task', {'taskId': task_id, 'archived': archived, 'archiveAllDone': archive_all}))
             return
 
         if p == '/api/task-todos':
@@ -2746,8 +2751,11 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({'ok': False, 'error': 'title required'}, 400)
                 return
             target_dept = body.get('targetDept', '').strip()
-            result = handle_create_task(title, org, official, priority, template_id, params, target_dept)
-            self.send_json(result)
+            self.send_json(_proxy_to_backend('/api/create-task', {
+                'title': title, 'org': org, 'official': official,
+                'priority': priority, 'templateId': template_id,
+                'params': params, 'targetDept': target_dept,
+            }))
             return
 
         if p == '/api/review-action':
@@ -2757,8 +2765,7 @@ class Handler(BaseHTTPRequestHandler):
             if not task_id or action not in ('approve', 'reject'):
                 self.send_json({'ok': False, 'error': 'taskId and action(approve/reject) required'}, 400)
                 return
-            result = handle_review_action(task_id, action, comment)
-            self.send_json(result)
+            self.send_json(_proxy_to_backend('/api/review-action', {'taskId': task_id, 'action': action, 'comment': comment}))
             return
 
         if p == '/api/advance-state':
@@ -2767,8 +2774,7 @@ class Handler(BaseHTTPRequestHandler):
             if not task_id:
                 self.send_json({'ok': False, 'error': 'taskId required'}, 400)
                 return
-            result = handle_advance_state(task_id, comment)
-            self.send_json(result)
+            self.send_json(_proxy_to_backend('/api/advance-state', {'taskId': task_id, 'comment': comment}))
             return
 
         if p == '/api/agent-wake':
@@ -2777,8 +2783,7 @@ class Handler(BaseHTTPRequestHandler):
             if not agent_id:
                 self.send_json({'ok': False, 'error': 'agentId required'}, 400)
                 return
-            result = wake_agent(agent_id, message)
-            self.send_json(result)
+            self.send_json(_proxy_to_backend('/api/agent-wake', {'agentId': agent_id, 'message': message}))
             return
 
         if p == '/api/set-model':
@@ -2787,41 +2792,20 @@ class Handler(BaseHTTPRequestHandler):
             if not agent_id or not model:
                 self.send_json({'ok': False, 'error': 'agentId and model required'}, 400)
                 return
+            self.send_json(_proxy_to_backend('/api/set-model', {'agentId': agent_id, 'model': model}))
+            return
 
-            # Write to pending (atomic)
-            pending_path = DATA / 'pending_model_changes.json'
-            def update_pending(current):
-                current = [x for x in current if x.get('agentId') != agent_id]
-                current.append({'agentId': agent_id, 'model': model})
-                return current
-            atomic_json_update(pending_path, update_pending, [])
-
-            # Async apply
-            def apply_async():
-                try:
-                    subprocess.run(['python3', str(SCRIPTS / 'apply_model_changes.py')], timeout=30)
-                    subprocess.run(['python3', str(SCRIPTS / 'sync_agent_config.py')], timeout=10)
-                except Exception as e:
-                    print(f'[apply error] {e}', file=sys.stderr)
-
-            threading.Thread(target=apply_async, daemon=True).start()
-            self.send_json({'ok': True, 'message': f'Queued: {agent_id} → {model}'})
-
-        # Fix #139: 设置派发渠道（feishu/telegram/wecom/signal/tui）
-        elif p == '/api/set-dispatch-channel':
+        if p == '/api/set-dispatch-channel':
             channel = body.get('channel', '').strip()
             allowed = {'feishu', 'telegram', 'wecom', 'signal', 'tui', 'discord', 'slack'}
             if not channel or channel not in allowed:
                 self.send_json({'ok': False, 'error': f'channel must be one of: {", ".join(sorted(allowed))}'}, 400)
                 return
-            def _set_channel(cfg):
-                cfg['dispatchChannel'] = channel
-                return cfg
-            atomic_json_update(DATA / 'agent_config.json', _set_channel, {})
-            self.send_json({'ok': True, 'message': f'派发渠道已切换为 {channel}'})
+            self.send_json(_proxy_to_backend('/api/set-dispatch-channel', {'channel': channel}))
+            return
 
         # ── 朝堂议政 POST ──
-        elif p == '/api/court-discuss/start':
+        if p == '/api/court-discuss/start':
             topic = body.get('topic', '').strip()
             officials = body.get('officials', [])
             task_id = body.get('taskId', '').strip()
@@ -2831,35 +2815,36 @@ class Handler(BaseHTTPRequestHandler):
             if not officials or not isinstance(officials, list):
                 self.send_json({'ok': False, 'error': 'officials list required'}, 400)
                 return
-            # 校验官员 ID
             valid_ids = set(CD_PROFILES.keys())
             officials = [o for o in officials if o in valid_ids]
             if len(officials) < 2:
                 self.send_json({'ok': False, 'error': '至少选择2位官员'}, 400)
                 return
-            self.send_json(cd_create(topic, officials, task_id))
+            self.send_json(_proxy_to_backend('/api/court-discuss/start', {'topic': topic, 'officials': officials, 'taskId': task_id}))
+            return
 
-        elif p == '/api/court-discuss/advance':
+        if p == '/api/court-discuss/advance':
             sid = body.get('sessionId', '').strip()
             user_msg = body.get('userMessage', '').strip() or None
             decree = body.get('decree', '').strip() or None
             if not sid:
                 self.send_json({'ok': False, 'error': 'sessionId required'}, 400)
                 return
-            self.send_json(cd_advance(sid, user_msg, decree))
+            self.send_json(_proxy_to_backend('/api/court-discuss/advance', {'sessionId': sid, 'userMessage': user_msg, 'decree': decree}))
+            return
 
-        elif p == '/api/court-discuss/conclude':
+        if p == '/api/court-discuss/conclude':
             sid = body.get('sessionId', '').strip()
             if not sid:
                 self.send_json({'ok': False, 'error': 'sessionId required'}, 400)
                 return
-            self.send_json(cd_conclude(sid))
+            self.send_json(_proxy_to_backend('/api/court-discuss/conclude', {'sessionId': sid}))
+            return
 
-        elif p == '/api/court-discuss/destroy':
+        if p == '/api/court-discuss/destroy':
             sid = body.get('sessionId', '').strip()
-            if sid:
-                cd_destroy(sid)
-            self.send_json({'ok': True})
+            self.send_json(_proxy_to_backend('/api/court-discuss/destroy', {'sessionId': sid}))
+            return
 
         else:
             self.send_error(404)
@@ -2892,23 +2877,12 @@ def main():
     migrate_notification_config()
     _check_openclaw_gateway_startup()
 
-    # 启动恢复：重新派发上次被 kill 中断的 queued 任务
-    threading.Timer(3.0, _startup_recover_queued_dispatches).start()
+    # 启动恢复：已迁移到 orchestrator_worker（startup 时自动执行）
+    # threading.Timer(3.0, _startup_recover_queued_dispatches).start()
 
-    # 定时巡检：每 120 秒自动扫描停滞任务并触发重试/升级/回滚
-    def _periodic_scheduler_scan():
-        while True:
-            try:
-                import time as _time
-                _time.sleep(120)
-                result = handle_scheduler_scan(threshold_sec=180)
-                count = result.get('count', 0) if isinstance(result, dict) else 0
-                if count > 0:
-                    log.info(f'🔍 定时巡检：{count} 个动作')
-            except Exception as e:
-                log.warning(f'定时巡检异常: {e}')
-    threading.Thread(target=_periodic_scheduler_scan, daemon=True).start()
-    log.info('🔍 定时巡检已启动（每120秒）')
+    # 定时巡检：已迁移到 FastAPI backend，由 run_loop.sh 通过 curl 调用
+    # （旧 daemon thread 已移除，避免双重扫描）
+    log.info('🔍 定时巡检已迁移到 FastAPI backend')
 
     try:
         server.serve_forever()

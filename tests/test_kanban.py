@@ -105,7 +105,7 @@ def test_done(tmp_path):
 
 
 def test_progress(tmp_path):
-    """cmd_progress updates now text and appends to progress_log."""
+    """cmd_progress records progress and todos."""
     tasks_file = tmp_path / 'tasks_source.json'
     tasks_file.write_text(json.dumps([
         {'id': 'T-5', 'title': 'progress test', 'state': 'Doing', 'org': '工部'}
@@ -125,6 +125,26 @@ def test_progress(tmp_path):
         assert statuses['已完成需求分析'] == 'completed'
         assert statuses['正在写代码'] == 'in-progress'
         assert statuses['待测试'] == 'not-started'
+    finally:
+        kb.TASKS_FILE = original
+
+
+def test_flow_to_emperor_marks_done(tmp_path):
+    """回奏皇上应同步将任务收口为 Done，避免 flow_log 与 state 不一致。"""
+    tasks_file = tmp_path / 'tasks_source.json'
+    tasks_file.write_text(json.dumps([
+        {'id': 'T-10', 'title': 'reply test', 'state': 'Zhongshu', 'org': '中书省', 'flow_log': [], 'now': ''}
+    ]))
+
+    original = kb.TASKS_FILE
+    kb.TASKS_FILE = tasks_file
+    try:
+        kb.cmd_flow('T-10', '太子', '皇上', '✅ 回奏阶段性结果：分析与基础回归已完成')
+        tasks = json.loads(tasks_file.read_text())
+        t = tasks[0]
+        assert t['state'] == 'Done'
+        assert t['org'] == '皇上'
+        assert any(e.get('to') == '皇上' for e in t['flow_log'])
     finally:
         kb.TASKS_FILE = original
 

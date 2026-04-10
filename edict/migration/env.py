@@ -21,7 +21,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 from app.config import get_settings
-from app.models import Task, Event, Thought, Todo  # noqa
+from app.models import AuditLog, OutboxEvent, Task, Event, Thought, Todo  # noqa
 from app.db import Base
 
 target_metadata = Base.metadata
