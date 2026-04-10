@@ -2754,7 +2754,9 @@ class Handler(BaseHTTPRequestHandler):
             if not task_id and not archive_all:
                 self.send_json({'ok': False, 'error': 'taskId or archiveAllDone required'}, 400)
                 return
-            self.send_json(_proxy_to_backend('/api/archive-task', {'taskId': task_id, 'archived': archived, 'archiveAllDone': archive_all}))
+            # 直接操作本地 JSON，不代理 FastAPI backend（后者没有旧数据）
+            result = handle_archive_task(task_id, archived, archive_all)
+            self.send_json(result)
             return
 
         if p == '/api/task-todos':
