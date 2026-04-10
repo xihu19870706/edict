@@ -117,6 +117,7 @@ function MemorialDetailModal({
 
   const [loadingOutput, setLoadingOutput] = useState(false);
   const [outputData, setOutputData] = useState<TaskOutputData | null>(null);
+  const toast = useStore((s) => s.toast);
 
   const loadOutput = () => {
     setLoadingOutput(true);
@@ -127,6 +128,21 @@ function MemorialDetailModal({
       setOutputData({ ok: false, taskId: t.id, exists: false, error: '加载失败' });
       setLoadingOutput(false);
     });
+  };
+
+  const handleArchive = async () => {
+    if (!confirm(`确认归档删除「${t.title || t.id}」？\n归档后可从奏折阁移除，但仍可在归档视图中恢复。`)) return;
+    try {
+      const r = await api.archiveTask(t.id, true);
+      if (r.ok) {
+        toast('已归档删除', 'ok');
+        onClose();
+      } else {
+        toast(r.error || '操作失败', 'err');
+      }
+    } catch {
+      toast('操作失败', 'err');
+    }
   };
 
   const downloadReport = () => {
@@ -287,6 +303,13 @@ function MemorialDetailModal({
           )}
 
           <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
+            <button
+              className="btn"
+              onClick={handleArchive}
+              style={{ fontSize: 12, padding: '6px 16px', borderColor: 'var(--danger)', color: 'var(--danger)' }}
+            >
+              🗑️ 归档删除
+            </button>
             <button className="btn btn-g" onClick={() => onExport(t)} style={{ fontSize: 12, padding: '6px 16px' }}>
               📋 复制奏折
             </button>
