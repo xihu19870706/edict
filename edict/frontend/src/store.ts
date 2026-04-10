@@ -440,11 +440,95 @@ export function esc(s: string | undefined | null): string {
     .replace(/"/g, '&quot;');
 }
 
-export function timeAgo(iso: string | undefined): string {
-  if (!iso) return '';
+export const BEIJING_TIMEZONE = 'Asia/Shanghai';
+
+const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000;
+const ISO_TZ_RE = /(?:[zZ]|[+-]\d{2}:?\d{2})$/;
+const NAIVE_TS_RE = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/;
+
+function parseEpoch(value: number): Date | null {
+  if (!Number.isFinite(value)) return null;
+  const ms = Math.abs(value) >= 1e12 ? value : value * 1000;
+  const d = new Date(ms);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function formatBeijingParts(date: Date): Record<string, string> {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: BEIJING_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+
+  return parts.reduce<Record<string, string>>((acc, part) => {
+    if (part.type !== 'literal') acc[part.type] = part.value;
+    return acc;
+  }, {});
+}
+
+export function parseFlexibleTimestamp(input: string | number | undefined | null): Date | null {
+  if (input == null || input === '') return null;
+  if (typeof input === 'number') return parseEpoch(input);
+  if ((input as unknown) instanceof Date) return Number.isNaN((input as unknown as Date).getTime()) ? null : (input as unknown as Date);
+  if (typeof input !== 'string') return null;
+
+  const s = input.trim();
+  if (!s) return null;
+
+  if (/^\d+(?:\.\d+)?$/.test(s)) {
+    return parseEpoch(Number(s));
+  }
+
+  const naive = s.match(NAIVE_TS_RE);
+  if (naive) {
+    const [, y, m, d, h, mi, se = '00', msRaw = '0'] = naive;
+    const ms = msRaw.padEnd(3, '0').slice(0, 3);
+    const utcMs = Date.UTC(
+      Number(y),
+      Number(m) - 1,
+      Number(d),
+      Number(h),
+      Number(mi),
+      Number(se),
+      Number(ms),
+    ) - BEIJING_OFFSET_MS;
+    const dt = new Date(utcMs);
+    return Number.isNaN(dt.getTime()) ? null : dt;
+  }
+
+  const normalized = (s.includes(' ') ? s.replace(' ', 'T') : s).replace(/([+-]\d{2})(\d{2})$/, '$1:$2');
+  if (ISO_TZ_RE.test(normalized)) {
+    const dt = new Date(normalized);
+    return Number.isNaN(dt.getTime()) ? null : dt;
+  }
+
+  const dt = new Date(normalized);
+  return Number.isNaN(dt.getTime()) ? null : dt;
+}
+
+export function formatBeijingTime(input: string | number | undefined | null): string {
+  const d = parseFlexibleTimestamp(input);
+  if (!d) return '';
+  const parts = formatBeijingParts(d);
+  return `${parts.hour || '00'}:${parts.minute || '00'}:${parts.second || '00'}`;
+}
+
+export function formatBeijingDateTime(input: string | number | undefined | null): string {
+  const d = parseFlexibleTimestamp(input);
+  if (!d) return '';
+  const parts = formatBeijingParts(d);
+  return `${parts.year || '0000'}-${parts.month || '00'}-${parts.day || '00'} ${parts.hour || '00'}:${parts.minute || '00'}:${parts.second || '00'}`;
+}
+
+export function timeAgo(input: string | number | undefined | null): string {
+  const d = parseFlexibleTimestamp(input);
+  if (!d) return '';
   try {
-    const d = new Date(iso.includes('T') ? iso : iso.replace(' ', 'T') + 'Z');
-    if (isNaN(d.getTime())) return '';
     const diff = Date.now() - d.getTime();
     const mins = Math.floor(diff / 60000);
     if (mins < 1) return '刚刚';

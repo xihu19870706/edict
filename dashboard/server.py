@@ -904,13 +904,13 @@ def get_agents_status():
             status = 'idle'
             status_label = '⚪ 无记录'
 
-        # 格式化最后活跃时间
-        last_active_str = None
+        # 格式化最后活跃时间（UTC ISO，保留原始值供前端统一解析）
+        last_active_iso = None
         if last_ts > 0:
             try:
-                last_active_str = datetime.datetime.fromtimestamp(
-                    last_ts / 1000
-                ).strftime('%m-%d %H:%M')
+                last_active_iso = datetime.datetime.fromtimestamp(
+                    last_ts / 1000, tz=datetime.timezone.utc
+                ).strftime('%Y-%m-%dT%H:%M:%SZ')
             except Exception:
                 pass
 
@@ -921,8 +921,9 @@ def get_agents_status():
             'role': dept['role'],
             'status': status,
             'statusLabel': status_label,
-            'lastActive': last_active_str,
-            'lastActiveTs': last_ts,
+            'lastActive': last_active_iso,  # UTC ISO，前端按北京时间解析
+            'lastActiveAt': last_active_iso,  # 原始 UTC ISO，供精确消费
+            'lastActiveTs': last_ts,  # epoch ms，精确值
             'sessions': sess_count,
             'hasWorkspace': has_workspace,
             'processAlive': process_alive,
@@ -1984,7 +1985,8 @@ def get_task_activity(task_id):
         'taskMeta': task_meta,
         'agentId': agent_id,
         'agentLabel': _STATE_LABELS.get(state, state),
-        'lastActive': updated_at[:19].replace('T', ' ') if updated_at else None,
+        'lastActive': updated_at if updated_at else None,  # 原始 UTC ISO，前端按北京时间解析
+        'lastActiveAt': updated_at if updated_at else None,  # 原始 UTC ISO，供精确消费
         'activity': activity,
         'activitySource': 'progress+session',
         'relatedAgents': sorted(list(related_agents)),

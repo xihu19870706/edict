@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useStore, DEPTS, isEdict, stateLabel } from '../store';
+import { useStore, DEPTS, isEdict, stateLabel, formatBeijingDateTime, formatBeijingTime } from '../store';
 import { api, type OfficialInfo } from '../api';
 
 export default function MonitorPanel() {
@@ -84,7 +84,7 @@ export default function MonitorPanel() {
                   <div style={{ fontSize: 10, color: 'var(--muted)' }}>{a.role}</div>
                   <div style={{ fontSize: 10, color: 'var(--muted)' }}>{a.statusLabel}</div>
                   {a.lastActive ? (
-                    <div style={{ fontSize: 10, color: 'var(--muted)' }}>⏰ {a.lastActive}</div>
+                    <div style={{ fontSize: 10, color: 'var(--muted)' }}>⏰ {formatBeijingDateTime(a.lastActive)}</div>
                   ) : (
                     <div style={{ fontSize: 10, color: 'var(--muted)' }}>无活动记录</div>
                   )}
@@ -103,7 +103,7 @@ export default function MonitorPanel() {
             {offline > 0 && <span><span className="as-dot offline" style={{ position: 'static', width: 8, height: 8 }} /> {offline} 离线</span>}
             {unconf > 0 && <span><span className="as-dot unconfigured" style={{ position: 'static', width: 8, height: 8 }} /> {unconf} 未配置</span>}
             <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--muted)' }}>
-              检测于 {(asData.checkedAt || '').substring(11, 19)}
+              检测于 {formatBeijingTime(asData.checkedAt)}
             </span>
           </div>
         </div>
@@ -160,7 +160,7 @@ export default function MonitorPanel() {
               </div>
               <div className="dc-footer">
                 <span className="dc-model">🤖 {off?.model_short || '待配置'}</span>
-                {off?.last_active && <span className="dc-la">⏰ {off.last_active}</span>}
+                {off?.last_active && <span className="dc-la">⏰ {formatBeijingDateTime(off.last_active)}</span>}
               </div>
             </div>
           );

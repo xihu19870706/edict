@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { useStore, getPipeStatus, deptColor, stateLabel, STATE_LABEL } from '../store';
+import { useStore, getPipeStatus, deptColor, stateLabel, STATE_LABEL, formatBeijingDateTime, formatBeijingTime, parseFlexibleTimestamp } from '../store';
 import { api } from '../api';
 import type {
   Task,
@@ -43,13 +43,7 @@ function fmtStalled(sec: number): string {
 }
 
 function fmtActivityTime(ts: number | string | undefined): string {
-  if (!ts) return '';
-  if (typeof ts === 'number') {
-    const d = new Date(ts);
-    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
-  }
-  if (typeof ts === 'string' && ts.length >= 19) return ts.substring(11, 19);
-  return String(ts).substring(0, 8);
+  return formatBeijingTime(ts);
 }
 
 export default function TaskModal() {
@@ -302,8 +296,8 @@ export default function TaskModal() {
             </div>
             {sched && (
               <div className="sched-line">
-                {sched.lastProgressAt && <span>最近进展 {(sched.lastProgressAt || '').replace('T', ' ').substring(0, 19)}</span>}
-                {sched.lastDispatchAt && <span>最近派发 {(sched.lastDispatchAt || '').replace('T', ' ').substring(0, 19)}</span>}
+                {sched.lastProgressAt && <span>最近进展 {formatBeijingDateTime(sched.lastProgressAt)}</span>}
+                {sched.lastDispatchAt && <span>最近派发 {formatBeijingDateTime(sched.lastDispatchAt)}</span>}
                 <span>自动回滚 {sched.autoRollback === false ? '关闭' : '开启'}</span>
                 {sched.lastDispatchAgent && <span>目标 {sched.lastDispatchAgent}</span>}
               </div>
@@ -336,7 +330,7 @@ export default function TaskModal() {
                 <div className="mr-val"><span className={`tag dt-${(task.org || '').replace(/\s/g, '')}`}>{task.org || '—'}</span></div>
               </div>
               {task.eta && task.eta !== '-' && (
-                <div className="m-row"><div className="mr-label">预计完成</div><div className="mr-val">{task.eta}</div></div>
+                <div className="m-row"><div className="mr-label">预计完成</div><div className="mr-val">{formatBeijingDateTime(task.eta)}</div></div>
               )}
               {task.block && task.block !== '无' && task.block !== '-' && (
                 <div className="m-row"><div className="mr-label" style={{ color: 'var(--danger)' }}>阻塞项</div><div className="mr-val" style={{ color: 'var(--danger)' }}>{task.block}</div></div>
@@ -365,7 +359,7 @@ export default function TaskModal() {
                   const col = deptColor(fl.from || '');
                   return (
                     <div className="fl-item" key={i}>
-                      <div className="fl-time">{fl.at ? fl.at.substring(11, 16) : ''}</div>
+                      <div className="fl-time">{formatBeijingTime(fl.at).slice(0, 5)}</div>
                       <div className="fl-dot" style={{ background: col }} />
                       <div className="fl-content">
                         <div className="fl-who">
@@ -451,14 +445,14 @@ function LiveActivitySection({
     if (!activity.length) return false;
     const last = activity[activity.length - 1];
     if (!last.at) return false;
-    const ts = typeof last.at === 'number' ? last.at : new Date(last.at).getTime();
-    return Date.now() - ts < 300000;
+    const dt = parseFlexibleTimestamp(last.at);
+    return !!dt && Date.now() - dt.getTime() < 300000;
   })();
 
   const agentParts: string[] = [];
   if (data.agentLabel) agentParts.push(data.agentLabel);
   if (data.relatedAgents && data.relatedAgents.length > 1) agentParts.push(`${data.relatedAgents.length}个 Agent`);
-  if (data.lastActive) agentParts.push(`最后活跃: ${data.lastActive}`);
+  if (data.lastActive) agentParts.push(`最后活跃: ${formatBeijingDateTime(data.lastActive)}`);
 
   // Phase durations
   const phaseDurations = data.phaseDurations || [];

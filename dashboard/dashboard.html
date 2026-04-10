@@ -926,7 +926,7 @@ function restoreGlobalScanState(){
   globalScanCheckedAt = String(raw.checkedAt || '');
   globalScanCount = Number(raw.count || globalScanActions.length || 0);
   if(st){
-    const at = globalScanCheckedAt.replace('T',' ').substring(11,19);
+    const at = fmtBeijingTime(globalScanCheckedAt||'');
     const count = globalScanCount;
     st.textContent = count || at ? `最近巡检: ${count} 个动作${at ? ' · ' + at : ''}` : '未巡检';
   }
@@ -1132,7 +1132,7 @@ function renderAgentsStatus(data){
             <div class="as-label">${esc(a.label)}</div>
             <div class="as-role">${esc(a.role)}</div>
             <div class="as-status">${esc(a.statusLabel)}</div>
-            ${a.lastActive?`<div class="as-time">⏰ ${esc(a.lastActive)}</div>`:'<div class="as-time">无活动记录</div>'}
+            ${a.lastActive?`<div class="as-time">⏰ ${fmtBeijingDateTime(a.lastActive)}</div>`:'<div class="as-time">无活动记录</div>'}
             ${canWake?`<button class="as-wake-btn" onclick="event.stopPropagation();wakeAgent('${a.id}',this)">⚡ 唤醒</button>`:''}
           </div>`;
         }).join('')}
@@ -1142,7 +1142,7 @@ function renderAgentsStatus(data){
         <span><span class="as-dot idle" style="position:static;width:8px;height:8px"></span> ${idle} 待命</span>
         ${offline?`<span><span class="as-dot offline" style="position:static;width:8px;height:8px"></span> ${offline} 离线</span>`:''}
         ${unconf?`<span><span class="as-dot unconfigured" style="position:static;width:8px;height:8px"></span> ${unconf} 未配置</span>`:''}
-        <span style="margin-left:auto;font-size:10px;color:var(--muted)">检测于 ${(data.checkedAt||'').substring(11,19)}</span>
+        <span style="margin-left:auto;font-size:10px;color:var(--muted)">检测于 ${fmtBeijingTime(data.checkedAt||'')}</span>
       </div>
     </div>`;
 }
@@ -1385,7 +1385,7 @@ function openTask(id){
           const isOk = (fl.remark||'').includes('✅')||fl.to==='皇上';
           const dotCls = isOk ? 'fl-ok' : (fl.from==='皇上'||fl.to==='皇上') ? 'fl-purple' : 'fl-blue';
           return `<div class="fl-item">
-            <div class="fl-time">${fl.at?fl.at.substring(11,16):''}</div>
+            <div class="fl-time">${fl.at?fmtBeijingTime(fl.at).slice(0,5):''}</div>
             <div class="fl-dot" style="background:${col}"></div>
             <div class="fl-content">
               <div class="fl-who">
@@ -1574,7 +1574,7 @@ function renderLiveActivity(data){
     const parts=[];
     if(data.agentLabel)parts.push(data.agentLabel);
     if(data.relatedAgents&&data.relatedAgents.length>1) parts.push(`${data.relatedAgents.length}个 Agent`);
-    if(data.lastActive)parts.push(`最后活跃: ${data.lastActive}`);
+    if(data.lastActive)parts.push(`最后活跃: ${fmtBeijingDateTime(data.lastActive)}`);
     agLbl.textContent=parts.join(' · ');
   }
 
@@ -1740,40 +1740,78 @@ function renderLiveActivity(data){
   }
 }
 
-function parseDateFlexible(ts){
+const BEIJING_TZ = 'Asia/Shanghai';
+const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000;
+const ISO_TZ_RE = /(?:[zZ]|[+-]\d{2}:?\d{2})$/;
+const NAIVE_TS_RE = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/;
+
+function parseFlexibleTimestamp(ts){
   if(ts===null||ts===undefined||ts==='') return null;
   if(ts instanceof Date) return isNaN(ts.getTime())?null:ts;
   if(typeof ts==='number'){
-    const ms = ts > 1e12 ? ts : ts * 1000;
+    const ms = Math.abs(ts) >= 1e12 ? ts : ts * 1000;
     const d = new Date(ms);
     return isNaN(d.getTime()) ? null : d;
   }
   if(typeof ts!=='string') return null;
   const s = ts.trim();
   if(!s) return null;
-  if(/^\d+$/.test(s)){
+  if(/^\d+(?:\.\d+)?$/.test(s)){
     const n = Number(s);
-    if(Number.isFinite(n)){
-      const ms = n > 1e12 ? n : n * 1000;
-      const d = new Date(ms);
-      return isNaN(d.getTime()) ? null : d;
-    }
+    if(!Number.isFinite(n)) return null;
+    const ms = Math.abs(n) >= 1e12 ? n : n * 1000;
+    const d = new Date(ms);
+    return isNaN(d.getTime()) ? null : d;
   }
-  const localMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/);
-  if(localMatch){
-    const [, y, m, d, h, mi, se] = localMatch;
-    const dt = new Date(Number(y), Number(m)-1, Number(d), Number(h), Number(mi), Number(se));
+  const naive = s.match(NAIVE_TS_RE);
+  if(naive){
+    const [, y, m, d, h, mi, se='00', msRaw='0'] = naive;
+    const ms = msRaw.padEnd(3,'0').slice(0,3);
+    const utcMs = Date.UTC(Number(y),Number(m)-1,Number(d),Number(h),Number(mi),Number(se),Number(ms)) - BEIJING_OFFSET_MS;
+    const dt = new Date(utcMs);
     return isNaN(dt.getTime()) ? null : dt;
   }
-  const iso = s.includes(' ') ? s.replace(' ', 'T') : s;
-  const parsed = new Date(iso);
-  return isNaN(parsed.getTime()) ? null : parsed;
+  const normalized = (s.includes(' ') ? s.replace(' ','T') : s).replace(/([+-]\d{2})(\d{2})$/,'$1:$2');
+  if(ISO_TZ_RE.test(normalized)){
+    const dt = new Date(normalized);
+    return isNaN(dt.getTime()) ? null : dt;
+  }
+  const dt = new Date(normalized);
+  return isNaN(dt.getTime()) ? null : dt;
 }
 
-function fmtActivityTime(ts){
-  const d = parseDateFlexible(ts);
+function fmtBeijingTime(ts){
+  const d = parseFlexibleTimestamp(ts);
   if(!d) return '';
-  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+  const parts = new Intl.DateTimeFormat('en-CA',{
+    timeZone: BEIJING_TZ,
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  }).formatToParts(d);
+  const m = {};
+  parts.forEach(p=>{ m[p.type]=p.value; });
+  return `${m.hour||'00'}:${m.minute||'00'}:${m.second||'00'}`;
+}
+
+function fmtBeijingDateTime(ts){
+  const d = parseFlexibleTimestamp(ts);
+  if(!d) return '';
+  const parts = new Intl.DateTimeFormat('en-CA',{
+    timeZone: BEIJING_TZ,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  }).formatToParts(d);
+  const m = {};
+  parts.forEach(p=>{ m[p.type]=p.value; });
+  return `${m.year}-${m.month}-${m.day} ${m.hour||'00'}:${m.minute||'00'}:${m.second||'00'}`;
+}
+
+// Backward alias for callers that used the old name
+const parseDateFlexible = parseFlexibleTimestamp;
+
+function fmtActivityTime(ts){
+  return fmtBeijingTime(ts);
 }
 
 /* ══ MODEL CONFIG ══ */
@@ -2183,7 +2221,7 @@ function openSessionDetail(jsonStr){
         const kLabel = kind==='assistant'?'回复':kind==='tool'?'工具':kind==='user'?'用户':'事件';
         let txt = (a.text||'').replace(/\[\[.*?\]\]/g,'').replace(/\*\*/g,'').trim();
         if(txt.length>200) txt=txt.substring(0,200)+'…';
-        const time = (a.at||'').substring(11,19);
+        const time = fmtBeijingTime(a.at||'');
         return `<div style="padding:8px 12px;border-bottom:1px solid var(--line);font-size:12px;line-height:1.5">
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
             <span>${kIcon}</span>
@@ -2216,7 +2254,7 @@ function extractAgent(t){
 function timeAgo(iso){
   if(!iso) return '';
   try{
-    const d = parseDateFlexible(iso);
+    const d = parseFlexibleTimestamp(iso);
     if(!d) return '';
     const diff = Date.now() - d.getTime();
     const mins = Math.floor(diff/60000);
@@ -2718,7 +2756,7 @@ async function runGlobalSchedulerScan(){
     const r = await postJ(API + '/scheduler-scan', {thresholdSec: 180});
     if(r.ok){
       const count = r.count || 0;
-      const at = (r.checkedAt || '').replace('T',' ').substring(11,19);
+      const at = fmtBeijingTime(r.checkedAt||'');
       globalScanActions = Array.isArray(r.actions) ? r.actions : [];
       globalScanCheckedAt = String(r.checkedAt || '');
       globalScanCount = Number(count || 0);
