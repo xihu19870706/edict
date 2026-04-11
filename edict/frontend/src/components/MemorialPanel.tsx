@@ -12,7 +12,6 @@ export default function MemorialPanel() {
   const [detailTask, setDetailTask] = useState<Task | null>(null);
   // batch select
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const loadLive = useStore((s) => s.loadLive);
 
   const tasks = liveStatus?.tasks || [];
 
@@ -46,7 +45,7 @@ export default function MemorialPanel() {
       } catch { fail++; }
     }
     setSelected(new Set());
-    if (fail === 0) { toast(`✅ ${ok} 道奏折已永久删除`); loadLive(); }
+    if (fail === 0) { toast(`✅ ${ok} 道奏折已永久删除`); window.location.reload(); }
     else toast(`${ok} 成功，${fail} 失败`, 'err');
   };
 
@@ -55,7 +54,7 @@ export default function MemorialPanel() {
     if (!confirm('确认永久删除该奏折？此操作不可恢复！')) return;
     try {
       const r = await api.deleteTask(id);
-      if (r.ok) { toast('已永久删除', 'ok'); loadLive(); }
+      if (r.ok) { toast('已永久删除', 'ok'); window.location.reload(); }
       else toast(r.error || '操作失败', 'err');
     } catch { toast('操作失败', 'err'); }
   };
@@ -214,7 +213,6 @@ export default function MemorialPanel() {
           task={detailTask}
           onClose={() => setDetailTask(null)}
           onExport={exportMemorial}
-          onArchived={() => loadLive()}
         />
       )}
     </div>
@@ -225,12 +223,10 @@ function MemorialDetailModal({
   task: t,
   onClose,
   onExport,
-  onArchived,
 }: {
   task: Task;
   onClose: () => void;
   onExport: (t: Task) => void;
-  onArchived: () => void;
 }) {
   const fl = t.flow_log || [];
   const st = t.state || 'Unknown';
@@ -256,7 +252,7 @@ function MemorialDetailModal({
     if (!confirm(`确认永久删除「${t.title || t.id}」？此操作不可恢复！`)) return;
     try {
       const r = await api.deleteTask(t.id);
-      if (r.ok) { toast('已永久删除', 'ok'); onClose(); onArchived(); }
+      if (r.ok) { toast('已永久删除', 'ok'); onClose(); window.location.reload(); }
       else toast(r.error || '操作失败', 'err');
     } catch { toast('操作失败', 'err'); }
   };
