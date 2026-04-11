@@ -35,27 +35,27 @@ export default function MemorialPanel() {
     setSelected(next);
   };
 
-  const handleBatchArchive = async () => {
+  const handleBatchDelete = async () => {
     if (selected.size === 0) { toast('请先选择要删除的奏折', 'err'); return; }
-    if (!confirm(`确认归档删除选中的 ${selected.size} 道奏折？`)) return;
+    if (!confirm(`确认永久删除选中的 ${selected.size} 道奏折？此操作不可恢复！`)) return;
     let ok = 0, fail = 0;
     for (const id of selected) {
       try {
-        const r = await api.archiveTask(id, true);
+        const r = await api.deleteTask(id);
         if (r.ok) ok++; else fail++;
       } catch { fail++; }
     }
     setSelected(new Set());
-    if (fail === 0) { toast(`✅ ${ok} 道奏折已归档删除`); loadLive(); }
+    if (fail === 0) { toast(`✅ ${ok} 道奏折已永久删除`); loadLive(); }
     else toast(`${ok} 成功，${fail} 失败`, 'err');
   };
 
-  const handleCardArchive = async (id: string, e: React.MouseEvent) => {
+  const handleCardDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm('确认归档删除该奏折？')) return;
+    if (!confirm('确认永久删除该奏折？此操作不可恢复！')) return;
     try {
-      const r = await api.archiveTask(id, true);
-      if (r.ok) { toast('已归档删除', 'ok'); loadLive(); }
+      const r = await api.deleteTask(id);
+      if (r.ok) { toast('已永久删除', 'ok'); loadLive(); }
       else toast(r.error || '操作失败', 'err');
     } catch { toast('操作失败', 'err'); }
   };
@@ -107,13 +107,13 @@ export default function MemorialPanel() {
               已选 {selected.size} 项
             </span>
             <button
-              onClick={handleBatchArchive}
+              onClick={handleBatchDelete}
               style={{
                 fontSize: 12, padding: '4px 12px', background: 'var(--danger)',
                 color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer',
               }}
             >
-              🗑️ 批量删除
+              🗑️ 永久删除
             </button>
             <button
               onClick={() => setSelected(new Set())}
@@ -151,8 +151,8 @@ export default function MemorialPanel() {
               >
                 {/* Card-level delete */}
                 <button
-                  title="归档删除"
-                  onClick={(e) => handleCardArchive(t.id, e)}
+                  title="永久删除"
+                  onClick={(e) => handleCardDelete(t.id, e)}
                   style={{
                     position: 'absolute', bottom: 10, right: 10,
                     background: 'none', border: 'none', cursor: 'pointer',
@@ -252,11 +252,11 @@ function MemorialDetailModal({
     });
   };
 
-  const handleArchive = async () => {
-    if (!confirm(`确认归档删除「${t.title || t.id}」？\n归档后可从奏折阁移除，但仍可在归档视图中恢复。`)) return;
+  const handleDelete = async () => {
+    if (!confirm(`确认永久删除「${t.title || t.id}」？此操作不可恢复！`)) return;
     try {
-      const r = await api.archiveTask(t.id, true);
-      if (r.ok) { toast('已归档删除', 'ok'); onClose(); onArchived(); }
+      const r = await api.deleteTask(t.id);
+      if (r.ok) { toast('已永久删除', 'ok'); onClose(); onArchived(); }
       else toast(r.error || '操作失败', 'err');
     } catch { toast('操作失败', 'err'); }
   };
@@ -421,10 +421,10 @@ function MemorialDetailModal({
           <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
             <button
               className="btn"
-              onClick={handleArchive}
+              onClick={handleDelete}
               style={{ fontSize: 12, padding: '6px 16px', borderColor: 'var(--danger)', color: 'var(--danger)' }}
             >
-              🗑️ 归档删除
+              🗑️ 永久删除
             </button>
             <button className="btn btn-g" onClick={() => onExport(t)} style={{ fontSize: 12, padding: '6px 16px' }}>
               📋 复制奏折

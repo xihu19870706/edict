@@ -252,6 +252,17 @@ def handle_archive_task(task_id, archived, archive_all_done=False):
     return {'ok': True, 'message': f'{task_id} {label}'}
 
 
+def handle_delete_task(task_id):
+    """Permanently remove a task from tasks_source.json."""
+    tasks = load_tasks()
+    original_len = len(tasks)
+    tasks = [t for t in tasks if t.get('id') != task_id]
+    if len(tasks) == original_len:
+        return {'ok': False, 'error': f'任务 {task_id} 不存在'}
+    save_tasks(tasks)
+    return {'ok': True, 'message': f'{task_id} 已永久删除'}
+
+
 def update_task_todos(task_id, todos):
     """Update the todos list for a task."""
     tasks = load_tasks()
@@ -2756,6 +2767,15 @@ class Handler(BaseHTTPRequestHandler):
                 return
             # 直接操作本地 JSON，不代理 FastAPI backend（后者没有旧数据）
             result = handle_archive_task(task_id, archived, archive_all)
+            self.send_json(result)
+            return
+
+        if p == '/api/delete-task':
+            task_id = body.get('taskId', '').strip() if body.get('taskId') else ''
+            if not task_id:
+                self.send_json({'ok': False, 'error': 'taskId required'}, 400)
+                return
+            result = handle_delete_task(task_id)
             self.send_json(result)
             return
 
